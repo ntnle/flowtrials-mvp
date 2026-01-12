@@ -17,43 +17,32 @@
 
   const valueProps = [
     {
-      title: 'Patient-first search',
-      copy: 'Plain-language filters and AI-assisted summaries help you decide quickly if a study fits.'
+      title: 'Find studies that fit',
+      bullets: [
+        'AI-generated plain-language summaries translate complex protocols',
+        'Eligibility highlights show key criteria at a glance',
+        'Data sourced from ClinicalTrials.gov, updated through clinical partnerships'
+      ]
     },
     {
-      title: 'Streamlined outreach',
-      copy: 'Submit interest directly to study teams—no endless forms or confusing email threads.'
+      title: 'Signal interest on your terms',
+      bullets: [
+        'You decide which studies to request—fully opt-in',
+        'Share only your name and contact info with study teams',
+        'Withdraw your request anytime, no questions asked',
+        'Study teams review eligibility and reach out if you match'
+      ]
     },
     {
-      title: 'Built with clinicians',
-      copy: 'We partner with researchers to keep details accurate and up to date.'
+      title: 'Connect with prepared participants',
+      bullets: [
+        'Participants arrive informed—already reviewed summaries and criteria',
+        'Receive essential contact signals from genuinely interested candidates',
+        'Listings kept accurate and current through clinical partnerships'
+      ]
     }
   ];
 
-  const founders = [
-    {
-      name: 'Malhaar Agrawal',
-      title: 'MD Candidate, Co-Founder & CEO',
-      initials: 'MA',
-      description:
-        "Malhaar is a medical student at UPenn's Perelman School of Medicine, an MIT alumnus, and a Truman Scholar with six years of clinical research experience. He co-founded Flow Trials to modernize recruitment and make participation in cutting-edge medical research more accessible.",
-      socials: {
-        linkedin: 'https://www.linkedin.com/in/malhaar-agrawal-b805771a9/',
-        email: 'mailto:malhaar@flowtrials.com'
-      }
-    },
-    {
-      name: 'Nathan Le',
-      title: 'Co-Founder',
-      initials: 'NL',
-      description:
-        'Nathan is a senior at Swarthmore College who brings engineering focus to build a user-friendly platform. He is dedicated to reducing disparities in health research and making it easier for people to engage with clinical studies.',
-      socials: {
-        linkedin: 'https://www.linkedin.com/in/nathan-le-b31a7a212/',
-        email: 'mailto:nathan@flowtrials.com'
-      }
-    }
-  ];
 
   function handleSearch() {
     if (searchQuery.trim()) {
@@ -97,7 +86,7 @@
           </h1>
 
           <p class="mb-10 max-w-2xl text-xl text-muted-foreground md:text-2xl mx-auto">
-            Find clinical trials you may be eligible for and express your interest to study teams. For people considering participation in medical research.
+            Making clinical trials more accessible, searchable, and understandable—plain-language summaries, eligibility clarity, and a guided way to reach study teams.
           </p>
 
           <!-- Search Input -->
@@ -160,66 +149,42 @@
         <div class="grid gap-6 md:grid-cols-3">
           {#each valueProps as item}
             <div class="h-full rounded-2xl border border-border bg-card/50 p-6 shadow-sm">
-              <h3 class="text-xl font-semibold mb-3">{item.title}</h3>
-              <p class="text-muted-foreground leading-relaxed">{item.copy}</p>
+              <h3 class="text-xl font-semibold mb-4">{item.title}</h3>
+              <ul class="space-y-2">
+                {#each item.bullets as bullet}
+                  <li class="text-sm text-muted-foreground leading-relaxed flex items-start gap-2">
+                    <span class="text-primary mt-1">•</span>
+                    <span>{bullet}</span>
+                  </li>
+                {/each}
+              </ul>
             </div>
           {/each}
         </div>
-      </section>
 
-      <section class="py-12 md:py-16">
-        <div class="text-center max-w-3xl mx-auto mb-10">
-          <h2 class="text-3xl md:text-4xl font-bold tracking-tight">Meet our founders</h2>
-          <p class="mt-4 text-lg text-muted-foreground">
-            The team bringing clinical research closer to the people it serves.
-          </p>
-        </div>
-
-        <div class="space-y-8">
-          {#each founders as founder}
-            <div class="rounded-3xl border border-border bg-card/60 backdrop-blur-sm p-6 md:p-8 shadow-sm">
-              <div class="grid gap-6 md:grid-cols-[auto,1fr] items-center">
-                <div class="flex items-center gap-4">
-                  <div class="h-20 w-20 md:h-24 md:w-24 rounded-2xl bg-gradient-to-br from-blue-100 via-white to-blue-200 border border-border text-2xl font-semibold text-blue-900 flex items-center justify-center">
-                    {founder.initials}
-                  </div>
-                </div>
-
-                <div class="space-y-4">
-                  <div>
-                    <h3 class="text-2xl font-bold tracking-tight">{founder.name}</h3>
-                    <p class="mt-1 text-base font-medium text-blue-700">{founder.title}</p>
-                  </div>
-                  <p class="text-muted-foreground leading-relaxed">{founder.description}</p>
-                  <div class="flex flex-wrap gap-3">
-                    <a
-                      class="inline-flex items-center gap-2 rounded-full border border-border bg-background px-4 py-2 text-sm font-medium text-blue-700 hover:bg-accent transition-colors"
-                      href={founder.socials.linkedin}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      LinkedIn
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4">
-                        <path d="M8 4v8m-3-5h6m3-3v8a2 2 0 0 1-2 2H6l-4 3V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2Z" />
-                      </svg>
-                    </a>
-                    <a
-                      class="inline-flex items-center gap-2 rounded-full border border-border bg-background px-4 py-2 text-sm font-medium hover:bg-accent transition-colors"
-                      href={founder.socials.email}
-                    >
-                      Email
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4">
-                        <path d="m3 5 5 4 5-4" />
-                        <rect x="2" y="4" width="12" height="9" rx="2" ry="2" />
-                      </svg>
-                    </a>
-                  </div>
-                </div>
-              </div>
+        <!-- Trust/Safety Band -->
+        <div class="mt-8 p-4 rounded-lg bg-muted/30 border border-border">
+          <div class="grid gap-3 md:grid-cols-2 lg:grid-cols-4 text-xs text-muted-foreground">
+            <div class="flex items-start gap-2">
+              <span class="text-primary">✓</span>
+              <span>No medical advice—eligibility determined by investigators</span>
             </div>
-          {/each}
+            <div class="flex items-start gap-2">
+              <span class="text-primary">✓</span>
+              <span>Minimal data collection, secure handling</span>
+            </div>
+            <div class="flex items-start gap-2">
+              <span class="text-primary">✓</span>
+              <span>Listings kept current via clinical partners</span>
+            </div>
+            <div class="flex items-start gap-2">
+              <span class="text-primary">✓</span>
+              <span>Withdraw participation requests anytime</span>
+            </div>
+          </div>
         </div>
       </section>
+
 
       <!-- MVP Disclaimer -->
       <div class="text-xs text-muted-foreground pt-8 border-t border-border">

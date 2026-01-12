@@ -12,6 +12,7 @@
   import Signup from './routes/Signup.svelte';
   import Login from './routes/Login.svelte';
   import Profile from './routes/Profile.svelte';
+  import Bio from './routes/Bio.svelte';
 
   const routes = {
     '/': Home,
@@ -20,6 +21,7 @@
     '/signup': Signup,
     '/login': Login,
     '/profile': Profile,
+    '/bio': Bio,
   };
 
   onMount(() => {
@@ -39,6 +41,7 @@
 
     <div class="flex items-center gap-6">
       <a href="/browse" use:link class="text-sm font-medium hover:text-primary transition-colors">Browse</a>
+      <a href="/bio" use:link class="text-sm font-medium hover:text-primary transition-colors">Bio</a>
 
       {#if $user}
         <a href="/profile" use:link class="text-sm font-medium hover:text-primary transition-colors">Profile</a>
