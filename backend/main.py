@@ -23,7 +23,7 @@ load_dotenv()
 # === CONFIG ===
 # =============================================================================
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:54322/postgres")
+DATABASE_URL = os.getenv("DATABASE_URL")
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "dev-admin-token-12345")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
