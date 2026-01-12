@@ -502,7 +502,19 @@
           </CardHeader>
           <CardContent>
             <div class="prose prose-sm max-w-prose">
-              <p class="text-foreground leading-7 whitespace-pre-wrap">{study.detailed_description}</p>
+              {#if study.detailed_description.length > DESCRIPTION_PREVIEW_LENGTH}
+                <p class="text-foreground leading-7 whitespace-pre-wrap">
+                  {descriptionExpanded ? study.detailed_description : study.detailed_description.substring(0, DESCRIPTION_PREVIEW_LENGTH) + '...'}
+                </p>
+                <button
+                  on:click={() => descriptionExpanded = !descriptionExpanded}
+                  class="mt-2 text-xs text-primary hover:underline"
+                >
+                  {descriptionExpanded ? 'Read less' : 'Read more'}
+                </button>
+              {:else}
+                <p class="text-foreground leading-7 whitespace-pre-wrap">{study.detailed_description}</p>
+              {/if}
             </div>
           </CardContent>
         </Card>
