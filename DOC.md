@@ -9,6 +9,8 @@ Flow Trials is a clinical trial discovery and participation platform. Users sear
 - **Frontend**: Svelte SPA with monolithic route pages in `frontend/src/routes`.
 - **Search and study data**: FastAPI (`backend/main.py`) with custom scoring.
 - **Auth and user data**: Supabase Postgres (profiles, participation requests).
+- **AI assist**: FastAPI endpoints generate cached plain titles, plain summaries, and eligibility quizzes (Anthropic).
+- **Deployment**: Backend on Render (`/health` for checks) with Supabase as the database; use the pooler host with `sslmode=require`.
 
 ## Monolithic Page Philosophy
 
@@ -62,3 +64,17 @@ Participation helpers live in `frontend/src/lib/supabase.js`.
 ## Ingestion Notes
 
 The ingestion script runs in `backend/ingest_ctgov.py` and loads recruiting studies by default. This is intentionally kept in FastAPI because the search scoring and ingestion logic are custom.
+
+## Deployment Notes
+
+- Backend expects Render start command: `uvicorn main:app --host 0.0.0.0 --port $PORT`.
+- `DATABASE_URL` should use the Supabase pooler host (e.g., `aws-0-us-west-2.pooler.supabase.com`) and `?sslmode=require` to avoid IPv6/connectivity issues.
+- CORS allowlist: set `FRONTEND_ORIGINS` to include production frontend (e.g., `https://flowtrials-mvp.vercel.app`) plus localhost dev URLs.
+- Frontend production API base: `VITE_API_BASE=https://flowtrials-mvp.onrender.com`.
+
+## COMMON ERRORS
+
+- **CORS 503/blocked**: `FRONTEND_ORIGINS` typo (e.g., double `https://`) prevents `Access-Control-Allow-Origin`. Fix the origin list and redeploy.
+- **DB connection unreachable**: Using `db.<ref>.supabase.co` without SSL on Render hits IPv6 and fails. Switch to the pooled host with `?sslmode=require`.
+- **Health checks failing**: Render probing `/` returns 404; set health check to `/health`.
+- **Python/psycopg build failure**: `psycopg2-binary` breaks on Python 3.13; use `psycopg[binary]>=3.2`.
