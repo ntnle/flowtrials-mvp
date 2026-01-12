@@ -10,10 +10,12 @@
   let consent = false;
   let loading = false;
   let error = '';
+  let info = '';
 
   async function handleSignup() {
     console.log('=== handleSignup called ===');
     error = '';
+    info = '';
 
     if (!consent) {
       error = 'Please agree to the terms and conditions';
@@ -43,8 +45,13 @@
 
       const { user, session } = result || {};
 
-      if (!user || !session) {
-        throw new Error('Signup failed - no user or session returned');
+      if (!user) {
+        throw new Error('Signup failed - no user returned');
+      }
+
+      if (!session) {
+        info = 'Check your email to confirm your account, then log in.';
+        return;
       }
 
       console.log('User created successfully:', user.id);
@@ -65,6 +72,7 @@
     } catch (err) {
       console.error('Signup error:', err);
       error = err.message || 'Signup failed. Please try again.';
+    } finally {
       loading = false;
     }
   }
@@ -130,6 +138,9 @@
 
           {#if error}
             <p class="text-sm text-destructive">{error}</p>
+          {/if}
+          {#if info}
+            <p class="text-sm text-primary">{info}</p>
           {/if}
 
           <button
