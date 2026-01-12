@@ -6,8 +6,9 @@ from contextlib import contextmanager
 from collections import deque
 from time import time
 
-import psycopg2
-from psycopg2.extras import RealDictCursor
+import psycopg
+from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
@@ -263,9 +264,8 @@ def save_ai_plain_summary(study_id: int, plain_summary: str):
 
 def save_ai_eligibility_quiz(study_id: int, quiz_questions: List[EligibilityQuizQuestion]):
     """Save AI-generated eligibility quiz to database"""
-    from psycopg2.extras import Json
     now = datetime.utcnow()
-    quiz_data = Json([q.model_dump() for q in quiz_questions])
+    quiz_data = Jsonb([q.model_dump() for q in quiz_questions])
 
     with get_db() as conn:
         cursor = conn.cursor()
@@ -285,7 +285,7 @@ def save_ai_eligibility_quiz(study_id: int, quiz_questions: List[EligibilityQuiz
 @contextmanager
 def get_db():
     """Context manager for database connections"""
-    conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+    conn = psycopg.connect(DATABASE_URL, row_factory=dict_row)
     try:
         yield conn
         conn.commit()
@@ -298,8 +298,6 @@ def get_db():
 
 def insert_study(study_data: StudyCreate) -> Study:
     """Insert a new study into the database"""
-    from psycopg2.extras import Json
-
     now = datetime.utcnow().isoformat()
 
     # Normalize conditions and zips to lowercase trimmed
@@ -307,16 +305,16 @@ def insert_study(study_data: StudyCreate) -> Study:
     normalized_zips = [z.strip() for z in study_data.site_zips]
 
     # Prepare JSONB fields using Json adapter
-    interventions_json = Json([i.model_dump() for i in study_data.interventions])
-    locations_json = Json([loc.model_dump() for loc in study_data.locations])
-    contacts_json = Json([c.model_dump() for c in study_data.contacts])
+    interventions_json = Jsonb([i.model_dump() for i in study_data.interventions])
+    locations_json = Jsonb([loc.model_dump() for loc in study_data.locations])
+    contacts_json = Jsonb([c.model_dump() for c in study_data.contacts])
 
     # Prepare raw_json - convert to Json adapter if it's a string
     raw_json_data = study_data.raw_json
     if isinstance(raw_json_data, str):
-        raw_json_data = Json(json.loads(raw_json_data))
+        raw_json_data = Jsonb(json.loads(raw_json_data))
     elif raw_json_data is not None:
-        raw_json_data = Json(raw_json_data)
+        raw_json_data = Jsonb(raw_json_data)
 
     with get_db() as conn:
         cursor = conn.cursor()
