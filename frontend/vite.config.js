@@ -6,7 +6,7 @@ import path from 'path'
 const base = process.env.VITE_BASE || process.env.BASE_PATH || "/";
 
 export default defineConfig({
-  base,
+  base: '/flowtrials/',
   plugins: [svelte()],
   resolve: {
     alias: {
