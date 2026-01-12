@@ -1,5 +1,6 @@
 import json
 import os
+import logging
 from datetime import datetime
 from typing import Optional, List
 from contextlib import contextmanager
@@ -18,6 +19,9 @@ from anthropic import Anthropic
 
 # Load environment variables
 load_dotenv()
+
+# Configure logger
+logger = logging.getLogger("uvicorn.error")
 
 
 # =============================================================================
@@ -692,8 +696,10 @@ Do not include any other text, just the JSON array."""
         return EligibilityQuizResponse(questions=questions, cached=False)
 
     except json.JSONDecodeError as e:
+        logger.exception("Failed to parse AI response for eligibility quiz", extra={"study_id": request.study_id})
         raise HTTPException(status_code=500, detail=f"Failed to parse AI response: {str(e)}")
     except Exception as e:
+        logger.exception("AI generation failed for eligibility quiz", extra={"study_id": request.study_id})
         raise HTTPException(status_code=500, detail=f"AI generation failed: {str(e)}")
 
 
@@ -749,6 +755,7 @@ Detailed Description: {request.detailed_description or "Not provided"}"""
         return StudySummaryResponse(summary=summary, cached=False)
 
     except Exception as e:
+        logger.exception("AI generation failed for study summary", extra={"study_id": request.study_id})
         raise HTTPException(status_code=500, detail=f"AI generation failed: {str(e)}")
 
 
@@ -812,6 +819,7 @@ Return ONLY the simplified title text, nothing else."""
         return PlainTitleResponse(plain_title=plain_title, cached=False)
 
     except Exception as e:
+        logger.exception("AI generation failed for plain title", extra={"study_id": request.study_id})
         raise HTTPException(status_code=500, detail=f"AI generation failed: {str(e)}")
 
 

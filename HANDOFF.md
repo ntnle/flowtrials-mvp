@@ -2,7 +2,7 @@
 
 ## Status
 - Backend deployed on Render (FastAPI + psycopg3), Supabase as DB. Health check at `/health`.
-- Env essentials: `DATABASE_URL` should use the Supabase pooler host with `?sslmode=require`; `FRONTEND_ORIGINS` includes `https://flowtrials-mvp.vercel.app` plus localhost; frontend points to `https://flowtrials-v1.onrender.com`.
+- Env essentials: `DATABASE_URL` should use the Supabase pooler host with `?sslmode=require`; `FRONTEND_ORIGINS` includes `https://flowtrials-mvp.vercel.app` plus localhost; frontend points to `https://flowtrials-mvp.onrender.com`.
 - AI assist endpoints (plain title/summary/quiz) are live and cached in Postgres.
 
 ## Next Task: Search Fallback (Keywords -> NLP)
