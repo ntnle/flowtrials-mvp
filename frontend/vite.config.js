@@ -3,14 +3,11 @@ import { svelte } from '@sveltejs/vite-plugin-svelte'
 import path from 'path'
 
 // https://vite.dev/config/
-const base = process.env.VITE_BASE || process.env.BASE_PATH || "/flowtrials-mvp/";
+const base = process.env.VITE_BASE || process.env.BASE_PATH || "/";
+
 
 export default defineConfig({
-  base: '/flowtrials-mvp/',
-  build: {
-    outDir: '../docs',
-    emptyOutDir: true
-  },
+  base,
   plugins: [svelte()],
   resolve: {
     alias: {
