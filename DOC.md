@@ -63,7 +63,22 @@ Participation helpers live in `frontend/src/lib/supabase.js`.
 
 ## Ingestion Notes
 
-The ingestion script runs in `backend/ingest_ctgov.py` and loads recruiting studies by default. This is intentionally kept in FastAPI because the search scoring and ingestion logic are custom.
+The ingestion script loads recruiting studies by default. Ingestion logic remains coupled to the FastAPI backend because search scoring and normalization are custom.
+
+**Canonical command:**
+```bash
+python scripts/ingest_ctgov.py
+```
+
+**Backwards-compatible (temporary):**
+```bash
+python backend/ingest_ctgov.py
+```
+
+## Architecture Conventions
+
+- **backend/**: Monolithic domain modules (platform_module, search_module, ai_module) containing FastAPI routes and business logic.
+- **scripts/**: Local runnable workflows for ingestion and maintenance tasks.
 
 ## Deployment Notes
 

@@ -7,6 +7,20 @@
 - Default role is **DOER**.
 - If the OPERATOR says **"just do it"**, complete the request end-to-end with minimal scope, then return to DOER discipline.
 
+## PLANNER Output Format (required)
+When the OPERATOR asks for a plan (or explicitly requests the PLANNER role), output **only** these sections in this exact order:
+
+1) **Goal**
+2) **Non-Goals**
+3) **Acceptance Criteria**
+4) **Atomic TODOs (Doer Checklist)**
+5) **Open Questions / Blockers** (0–3 max; omit if none)
+
+Constraints:
+- No code blocks, no patches.
+- No new features beyond the request.
+- Keep it short and actionable; include file paths when possible.
+
 ## DOER Rules (strict)
 - Make the smallest possible code change to satisfy the request. Do not refactor, rename, reorganize, or “clean up” unrelated code.
 - Prefer editing existing files over creating new ones; only add files when explicitly required.

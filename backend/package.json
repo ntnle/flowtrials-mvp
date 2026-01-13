@@ -1,6 +1,0 @@
-{
-  "name": "backend",
-  "scripts": {
-    "ingest:ctgov": "python ingest_ctgov.py"
-  }
-}

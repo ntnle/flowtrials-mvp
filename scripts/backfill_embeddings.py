@@ -4,8 +4,14 @@ Resumable: skips studies that already have embeddings
 """
 import sys
 from time import sleep
-from embeddings import generate_embeddings_batch, normalize_for_embedding
-from main import get_db
+from pathlib import Path
+
+# Add backend directory to path for imports
+backend_path = Path(__file__).parent.parent / "backend"
+sys.path.insert(0, str(backend_path))
+
+from search_module import generate_embeddings_batch, normalize_for_embedding
+from platform_module import get_db
 
 BATCH_SIZE = 100  # OpenAI allows up to 2048, but 100 is safer for rate limits
 RATE_LIMIT_DELAY = 1.0  # Seconds between batches

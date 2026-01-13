@@ -4,9 +4,14 @@ Fetches studies by condition and stores them in the database
 """
 import sys
 from datetime import datetime
-from ctgov_client import fetch_all_pages
-from ctgov_normalizer import normalize_ctgov_study
-from main import insert_study, get_db
+from pathlib import Path
+
+# Add backend directory to path for imports
+backend_path = Path(__file__).parent.parent / "backend"
+sys.path.insert(0, str(backend_path))
+
+from search_module import fetch_all_pages_from_ctgov, normalize_ctgov_study, insert_study
+from platform_module import get_db
 
 
 DEFAULT_CONDITIONS = [
@@ -114,7 +119,7 @@ def ingest_condition(condition: str, max_pages: int = 3, recruiting_only: bool =
         print("Filter: RECRUITING studies only")
 
     try:
-        studies = fetch_all_pages(
+        studies = fetch_all_pages_from_ctgov(
             query_cond=condition,
             max_pages=max_pages,
             recruiting_status="RECRUITING" if recruiting_only else None
