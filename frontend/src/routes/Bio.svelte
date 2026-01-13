@@ -1,9 +1,10 @@
 <script>
+  const baseUrl = import.meta.env.BASE_URL;
   const founders = [
     {
       name: 'Malhaar Agrawal',
       title: 'MD Candidate, Co-Founder & CEO',
-      image: '/malhaar.jpeg',
+      image: `${baseUrl}malhaar.jpeg`,
       description:
         "Malhaar is a medical student at UPenn's Perelman School of Medicine, an MIT alumnus, and a Truman Scholar with six years of clinical research experience. He co-founded Flow Trials to modernize recruitment and make participation in cutting-edge medical research more accessible.",
       socials: {
@@ -14,7 +15,7 @@
     {
       name: 'Nathan Le',
       title: 'Co-Founder',
-      image: '/nathanle.jpeg',
+      image: `${baseUrl}nathanle.jpeg`,
       description:
         'Nathan is a senior at Swarthmore College who brings engineering focus to build a user-friendly platform. He is dedicated to reducing disparities in health research and making it easier for people to engage with clinical studies.',
       socials: {
