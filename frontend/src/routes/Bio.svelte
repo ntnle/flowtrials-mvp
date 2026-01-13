@@ -44,46 +44,44 @@
 
       <section class="space-y-16">
         {#each founders as founder}
-          <div class="rounded-3xl border border-border bg-card/60 backdrop-blur-sm p-6 md:p-10 shadow-sm">
-            <div class="grid gap-8 lg:grid-cols-2 items-start">
-              <div class="rounded-2xl overflow-hidden border border-border shadow-lg bg-muted max-w-[70%] mx-auto lg:mx-0">
-                <img
-                  src={founder.image}
-                  alt={founder.name}
-                  class="w-full h-auto"
-                  loading="lazy"
-                />
-              </div>
+          <div class="grid gap-8 lg:grid-cols-2 items-start">
+            <div class="rounded-2xl overflow-hidden shadow-lg max-w-[70%] mx-auto lg:mx-0">
+              <img
+                src={founder.image}
+                alt={founder.name}
+                class="w-full h-auto"
+                loading="lazy"
+              />
+            </div>
 
-              <div class="space-y-6 flex flex-col justify-center">
-                <div>
-                  <h2 class="text-3xl font-bold tracking-tight mb-2">{founder.name}</h2>
-                  <p class="text-lg font-medium text-blue-700">{founder.title}</p>
-                </div>
-                <p class="text-muted-foreground text-lg leading-relaxed">{founder.description}</p>
-                <div class="flex flex-wrap gap-3 pt-2">
-                  <a
-                    class="inline-flex items-center gap-2 rounded-full border border-border bg-background px-5 py-2.5 text-sm font-medium text-blue-700 hover:bg-accent transition-colors"
-                    href={founder.socials.linkedin}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    LinkedIn
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4">
-                      <path d="M8 4v8m-3-5h6m3-3v8a2 2 0 0 1-2 2H6l-4 3V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2Z" />
-                    </svg>
-                  </a>
-                  <a
-                    class="inline-flex items-center gap-2 rounded-full border border-border bg-background px-5 py-2.5 text-sm font-medium hover:bg-accent transition-colors"
-                    href={founder.socials.email}
-                  >
-                    Email
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4">
-                      <path d="m3 5 5 4 5-4" />
-                      <rect x="2" y="4" width="12" height="9" rx="2" ry="2" />
-                    </svg>
-                  </a>
-                </div>
+            <div class="space-y-6 flex flex-col justify-center">
+              <div>
+                <h2 class="text-3xl font-bold tracking-tight mb-2">{founder.name}</h2>
+                <p class="text-lg font-medium text-blue-700">{founder.title}</p>
+              </div>
+              <p class="text-muted-foreground text-lg leading-relaxed">{founder.description}</p>
+              <div class="flex flex-wrap gap-3 pt-2">
+                <a
+                  class="inline-flex items-center gap-2 rounded-full border border-border bg-background px-5 py-2.5 text-sm font-medium text-blue-700 hover:bg-accent transition-colors"
+                  href={founder.socials.linkedin}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  LinkedIn
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4">
+                    <path d="M8 4v8m-3-5h6m3-3v8a2 2 0 0 1-2 2H6l-4 3V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2Z" />
+                  </svg>
+                </a>
+                <a
+                  class="inline-flex items-center gap-2 rounded-full border border-border bg-background px-5 py-2.5 text-sm font-medium hover:bg-accent transition-colors"
+                  href={founder.socials.email}
+                >
+                  Email
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4">
+                    <path d="m3 5 5 4 5-4" />
+                    <rect x="2" y="4" width="12" height="9" rx="2" ry="2" />
+                  </svg>
+                </a>
               </div>
             </div>
           </div>
