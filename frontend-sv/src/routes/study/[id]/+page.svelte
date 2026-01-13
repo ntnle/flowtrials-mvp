@@ -225,6 +225,62 @@
   const ELIGIBILITY_PREVIEW_LENGTH = 400;
   const DESCRIPTION_PREVIEW_LENGTH = 400;
 
+  function splitEligibilityText(text) {
+    if (!text) return { inclusion: [], exclusion: [], other: [] };
+
+    const raw = String(text);
+    const lower = raw.toLowerCase();
+    const inclusionIdx = lower.indexOf('inclusion criteria');
+    const exclusionIdx = lower.indexOf('exclusion criteria');
+
+    let inclusionText = '';
+    let exclusionText = '';
+    let otherText = '';
+
+    if (inclusionIdx !== -1 && exclusionIdx !== -1) {
+      if (inclusionIdx < exclusionIdx) {
+        inclusionText = raw.slice(inclusionIdx, exclusionIdx);
+        exclusionText = raw.slice(exclusionIdx);
+      } else {
+        exclusionText = raw.slice(exclusionIdx, inclusionIdx);
+        inclusionText = raw.slice(inclusionIdx);
+      }
+      otherText = raw.slice(0, Math.min(inclusionIdx, exclusionIdx));
+    } else if (inclusionIdx !== -1) {
+      inclusionText = raw.slice(inclusionIdx);
+      otherText = raw.slice(0, inclusionIdx);
+    } else if (exclusionIdx !== -1) {
+      exclusionText = raw.slice(exclusionIdx);
+      otherText = raw.slice(0, exclusionIdx);
+    } else {
+      otherText = raw;
+    }
+
+    const toBullets = (section) => {
+      const lines = String(section)
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .filter((l) => !/^(inclusion|exclusion)\s*criteria:?$/i.test(l));
+
+      const bullets = lines
+        .filter((l) => /^([•\-*]|\d+[\).])\s+/.test(l))
+        .map((l) => l.replace(/^([•\-*]|\d+[\).])\s+/, '').trim())
+        .filter(Boolean);
+
+      if (bullets.length >= 2) return bullets;
+      return lines;
+    };
+
+    return {
+      inclusion: toBullets(inclusionText),
+      exclusion: toBullets(exclusionText),
+      other: toBullets(otherText)
+    };
+  }
+
+  $: eligibilityParsed = splitEligibilityText(study?.eligibility_criteria);
+
   // Quiz pagination state
   let currentQuizQuestion = 0;
   let quizCompleted = false;
@@ -536,18 +592,72 @@
             </div>
           </CardHeader>
           <CardContent>
-            <div class="prose prose-sm max-w-prose">
-              {#if study.eligibility_criteria.length > ELIGIBILITY_PREVIEW_LENGTH}
-                <pre class="text-foreground leading-7 whitespace-pre-wrap font-sans">{eligibilityExpanded ? study.eligibility_criteria : study.eligibility_criteria.substring(0, ELIGIBILITY_PREVIEW_LENGTH) + '...'}</pre>
-                <button
-                  on:click={() => eligibilityExpanded = !eligibilityExpanded}
-                  class="mt-2 text-xs text-primary hover:underline"
-                >
-                  {eligibilityExpanded ? 'Read less' : 'Read more'}
-                </button>
-              {:else}
-                <pre class="text-foreground leading-7 whitespace-pre-wrap font-sans">{study.eligibility_criteria}</pre>
+            <div class="space-y-4">
+              {#if eligibilityParsed.other && eligibilityParsed.other.length > 0}
+                <div class="text-sm text-muted-foreground">
+                  {#each eligibilityParsed.other.slice(0, 3) as line}
+                    <p class="leading-6">{line}</p>
+                  {/each}
+                </div>
               {/if}
+
+              <div class="grid gap-4 md:grid-cols-2">
+                <div class="rounded-md border border-border bg-muted/30 p-4">
+                  <div class="flex items-center justify-between mb-3">
+                    <div class="text-sm font-semibold text-foreground">Inclusion</div>
+                    <span class="text-xs text-muted-foreground">Usually must be true</span>
+                  </div>
+                  {#if eligibilityParsed.inclusion && eligibilityParsed.inclusion.length > 0}
+                    <ul class="space-y-2 text-sm text-foreground">
+                      {#each eligibilityParsed.inclusion.slice(0, 12) as item}
+                        <li class="flex gap-2">
+                          <span class="text-muted-foreground">•</span>
+                          <span class="leading-6">{item}</span>
+                        </li>
+                      {/each}
+                    </ul>
+                  {:else}
+                    <p class="text-sm text-muted-foreground">No inclusion criteria listed.</p>
+                  {/if}
+                </div>
+
+                <div class="rounded-md border border-border bg-muted/30 p-4">
+                  <div class="flex items-center justify-between mb-3">
+                    <div class="text-sm font-semibold text-foreground">Exclusion</div>
+                    <span class="text-xs text-muted-foreground">Usually means not eligible</span>
+                  </div>
+                  {#if eligibilityParsed.exclusion && eligibilityParsed.exclusion.length > 0}
+                    <ul class="space-y-2 text-sm text-foreground">
+                      {#each eligibilityParsed.exclusion.slice(0, 12) as item}
+                        <li class="flex gap-2">
+                          <span class="text-muted-foreground">•</span>
+                          <span class="leading-6">{item}</span>
+                        </li>
+                      {/each}
+                    </ul>
+                  {:else}
+                    <p class="text-sm text-muted-foreground">No exclusion criteria listed.</p>
+                  {/if}
+                </div>
+              </div>
+
+              <div class="rounded-md border border-border bg-background p-3">
+                <button
+                  type="button"
+                  on:click={() => eligibilityExpanded = !eligibilityExpanded}
+                  class="text-xs font-medium text-primary hover:underline"
+                >
+                  {eligibilityExpanded ? 'Hide original eligibility text' : 'Show original eligibility text'}
+                </button>
+
+                {#if eligibilityExpanded}
+                  <pre class="mt-3 text-xs text-foreground whitespace-pre-wrap font-sans leading-6">{study.eligibility_criteria}</pre>
+                {/if}
+              </div>
+
+              <div class="text-xs text-muted-foreground">
+                Always confirm with the study team—final eligibility is determined by investigators.
+              </div>
             </div>
 
             <!-- AI Eligibility Quiz Display -->
@@ -846,7 +956,7 @@
       on:click|stopPropagation
       on:keydown|stopPropagation={() => {}}
     >
-      <Card class="max-w-lg w-full">
+      <Card class="max-w-lg w-full bg-card text-card-foreground border border-border shadow-2xl">
         <CardHeader>
           <CardTitle>Confirm Participation</CardTitle>
         </CardHeader>

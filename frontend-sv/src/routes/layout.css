@@ -1,3 +1,37 @@
 @import 'tailwindcss';
 @plugin '@tailwindcss/forms';
 @plugin '@tailwindcss/typography';
+
+@theme {
+	--color-background: oklch(100% 0 0);
+	--color-foreground: oklch(10.93% 0.02 265.75);
+	--color-card: oklch(100% 0 0);
+	--color-card-foreground: oklch(10.93% 0.02 265.75);
+	--color-popover: oklch(100% 0 0);
+	--color-popover-foreground: oklch(10.93% 0.02 265.75);
+	--color-primary: oklch(25.35% 0.03 265.75);
+	--color-primary-foreground: oklch(98.04% 0.01 264.66);
+	--color-secondary: oklch(96.08% 0.01 264.66);
+	--color-secondary-foreground: oklch(25.35% 0.03 265.75);
+	--color-muted: oklch(96.08% 0.01 264.66);
+	--color-muted-foreground: oklch(55.82% 0.02 257.47);
+	--color-accent: oklch(96.08% 0.01 264.66);
+	--color-accent-foreground: oklch(25.35% 0.03 265.75);
+	--color-destructive: oklch(62.8% 0.21 29.23);
+	--color-destructive-foreground: oklch(98.04% 0.01 264.66);
+	--color-border: oklch(92.37% 0.01 257.21);
+	--color-input: oklch(92.37% 0.01 257.21);
+	--color-ring: oklch(10.93% 0.02 265.75);
+	--radius: 0.5rem;
+}
+
+* {
+	border-color: var(--color-border);
+}
+
+body {
+	background-color: var(--color-background);
+	color: var(--color-foreground);
+	margin: 0;
+	padding: 0;
+}

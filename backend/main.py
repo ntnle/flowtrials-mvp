@@ -15,6 +15,7 @@ from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from anthropic import Anthropic
+from embeddings import generate_embedding, normalize_for_embedding
 
 
 # Load environment variables
@@ -31,6 +32,9 @@ logger = logging.getLogger("uvicorn.error")
 DATABASE_URL = os.getenv("DATABASE_URL")
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "dev-admin-token-12345")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+
+# Feature flag for semantic search
+USE_SEMANTIC_SEARCH = os.getenv("USE_SEMANTIC_SEARCH", "false").lower() == "true"
 
 # AI Cache version - increment when prompts or model changes
 AI_CACHE_VERSION = "v2-sonnet-4.5"
@@ -469,6 +473,195 @@ def keyword_score(query_text: str, study: Study) -> tuple[int, bool]:
     return total_score, has_match
 
 
+def generate_snippet(study: Study) -> str:
+    """Extract snippet from study description (sentence-aware truncation)"""
+    snippet_source = study.brief_summary or study.detailed_description or study.description or "No description available"
+    if len(snippet_source) <= 180:
+        return snippet_source
+
+    truncated = snippet_source[:180]
+    last_period = truncated.rfind('. ')
+    last_question = truncated.rfind('? ')
+    last_exclaim = truncated.rfind('! ')
+    sentence_end = max(last_period, last_question, last_exclaim)
+
+    if sentence_end >= 140:
+        return snippet_source[:sentence_end + 1].strip()
+    else:
+        return truncated.rstrip() + "..."
+
+
+def generate_locations_summary(study: Study) -> Optional[str]:
+    """Generate locations summary from study locations"""
+    if not study.locations:
+        return None
+    unique_cities = list(set([loc.city for loc in study.locations if loc.city]))
+    if not unique_cities:
+        return None
+    locations_summary = ", ".join(unique_cities[:3])
+    if len(unique_cities) > 3:
+        locations_summary += f" +{len(unique_cities) - 3} more"
+    return locations_summary
+
+
+def search_studies_semantic(request: SearchRequest) -> SearchResponse:
+    """
+    Execute semantic search with vector similarity + keyword fallback
+    Hybrid approach: Union vector candidates with keyword candidates
+    """
+    # Normalize request parameters
+    include_tags = [normalize_text(c) for c in request.conditions_include]
+    exclude_tags = [normalize_text(c) for c in request.conditions_exclude]
+    request_zip = request.zip.strip() if request.zip else None
+
+    # If no query text, fall back to condition-only filtering
+    if not request.query_text or not request.query_text.strip():
+        return search_studies(request)
+
+    # Generate query embedding
+    try:
+        query_embedding = generate_embedding(request.query_text.lower().strip())
+    except Exception as e:
+        logger.error(f"Failed to generate query embedding: {e}")
+        # Fall back to keyword-only search
+        return search_studies(request)
+
+    # Fetch candidates via hybrid approach
+    candidate_map = {}
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+
+        # Fetch vector similarity candidates (top 150)
+        cursor.execute("""
+            SELECT id, title, brief_summary, detailed_description, description,
+                   eligibility_criteria, recruiting_status, study_type, conditions,
+                   locations, site_zips, ai_plain_title,
+                   (embedding <=> %s::vector) as similarity_distance
+            FROM studies
+            WHERE embedding IS NOT NULL
+            ORDER BY similarity_distance
+            LIMIT 150
+        """, (query_embedding,))
+        vector_candidates = cursor.fetchall()
+
+        for row in vector_candidates:
+            candidate_map[row["id"]] = (row, row.get("similarity_distance", 1.0))
+
+        # Fetch keyword/trigram candidates (top 50)
+        cursor.execute("""
+            SELECT id, title, brief_summary, detailed_description, description,
+                   eligibility_criteria, recruiting_status, study_type, conditions,
+                   locations, site_zips, ai_plain_title
+            FROM studies
+            WHERE search_text % %s
+            ORDER BY similarity(search_text, %s) DESC
+            LIMIT 50
+        """, (request.query_text.lower(), request.query_text.lower()))
+        keyword_candidates = cursor.fetchall()
+
+        for row in keyword_candidates:
+            if row["id"] not in candidate_map:
+                candidate_map[row["id"]] = (row, 0.5)  # Neutral similarity for keyword-only
+
+    # Convert to Study objects and apply filters + scoring
+    results = []
+    for study_id, (row, similarity_distance) in candidate_map.items():
+        # Parse locations
+        locations = []
+        if row.get("locations"):
+            for loc_data in row["locations"]:
+                locations.append(Location(
+                    facility_name=loc_data.get("facility_name"),
+                    city=loc_data.get("city"),
+                    state=loc_data.get("state"),
+                    country=loc_data.get("country")
+                ))
+
+        # Create Study object
+        study = Study(
+            id=row["id"],
+            title=row["title"],
+            brief_summary=row.get("brief_summary"),
+            detailed_description=row.get("detailed_description"),
+            eligibility_criteria=row.get("eligibility_criteria"),
+            description=row.get("description"),
+            recruiting_status=row.get("recruiting_status"),
+            study_type=row.get("study_type"),
+            conditions=row.get("conditions", []),
+            locations=locations,
+            site_zips=row.get("site_zips", []),
+            ai_plain_title=row.get("ai_plain_title")
+        )
+
+        study_conditions = [normalize_text(c) for c in study.conditions]
+
+        # FILTERING RULES
+        # Apply exclude filter
+        if any(excluded in study_conditions for excluded in exclude_tags):
+            continue
+
+        # Apply include filter
+        if include_tags and not any(included in study_conditions for included in include_tags):
+            continue
+
+        # SCORING RULES
+        score = 0
+        reasons = []
+
+        # Vector similarity score (convert distance to similarity: closer to 0 = better)
+        # Scale: distance ∈ [0, 2] → similarity_score ∈ [100, 0]
+        vector_score = int((1.0 - min(similarity_distance, 1.0)) * 100)
+        score += vector_score
+        if vector_score > 50:
+            reasons.append(f"Semantic match ({vector_score})")
+
+        # +10 for each included condition matched
+        matched_includes = [tag for tag in include_tags if tag in study_conditions]
+        if matched_includes:
+            score += len(matched_includes) * 10
+            reasons.append(f"Conditions: {', '.join(matched_includes)}")
+
+        # Keyword bonus (check if query terms appear in text)
+        kw_score, has_kw_match = keyword_score(request.query_text, study)
+        if has_kw_match:
+            score += kw_score
+            reasons.append("Keyword match")
+
+        # ZIP boost
+        if request_zip and request_zip in study.site_zips:
+            score += 5
+            reasons.append("ZIP match")
+
+        # Generate snippet and locations summary
+        snippet = generate_snippet(study)
+        locations_summary = generate_locations_summary(study)
+
+        results.append(SearchResultItem(
+            study_id=study.id,
+            title=study.title,
+            plain_title=study.ai_plain_title,
+            snippet=snippet,
+            score=score,
+            reasons=reasons if reasons else ["General match"],
+            recruiting_status=study.recruiting_status,
+            study_type=study.study_type,
+            conditions=study.conditions,
+            locations_summary=locations_summary
+        ))
+
+    # Sort by score descending
+    results.sort(key=lambda x: x.score, reverse=True)
+
+    # Apply pagination
+    total = len(results)
+    start_idx = (request.page - 1) * request.limit
+    end_idx = start_idx + request.limit
+    paginated_results = results[start_idx:end_idx]
+
+    return SearchResponse(items=paginated_results, total=total)
+
+
 def search_studies(request: SearchRequest) -> SearchResponse:
     """Execute search with filtering and scoring"""
     all_studies = list_all_studies()
@@ -615,7 +808,10 @@ def create_study(
 @app.post("/search", response_model=SearchResponse)
 def search(request: SearchRequest):
     """Search studies with filtering and ranking"""
-    return search_studies(request)
+    if USE_SEMANTIC_SEARCH:
+        return search_studies_semantic(request)
+    else:
+        return search_studies(request)
 
 
 @app.get("/studies/{study_id}", response_model=Study)
