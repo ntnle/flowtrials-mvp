@@ -2,7 +2,7 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import { getStudyById, generateEligibilityQuiz, generateStudySummary, generatePlainTitle } from '$lib/api.js';
-  import { createParticipationRequest } from '$lib/supabase.js';
+  import { createParticipationRequest, getStudyByIdSupabase } from '$lib/supabase.js';
   import { user } from '$lib/authStore';
   import { Card, CardHeader, CardTitle, CardContent } from '$lib/components/ui/card/index.js';
 
@@ -16,6 +16,7 @@
   let participationNote = '';
   let submitting = false;
   let submitError = '';
+  let isDraft = false;
 
   // AI feature state
   let aiQuiz = null;
@@ -52,8 +53,10 @@
     loading = true;
     error = null;
     study = null;
+    isDraft = false;
 
     try {
+      // Try loading from FastAPI first (published studies)
       study = await getStudyById(studyId);
 
       // Load cached AI content if available
@@ -72,9 +75,24 @@
 
       loading = false;
     } catch (err) {
-      console.error("Error loading study:", err);
-      error = "Failed to load study details";
-      loading = false;
+      console.error("Error loading study from FastAPI:", err);
+
+      // If user is authenticated and FastAPI failed, try Supabase (might be a draft)
+      if ($user) {
+        try {
+          console.log("Attempting to load draft study from Supabase...");
+          study = await getStudyByIdSupabase(studyId);
+          isDraft = !study.is_published;
+          loading = false;
+        } catch (supabaseErr) {
+          console.error("Error loading study from Supabase:", supabaseErr);
+          error = "Failed to load study details";
+          loading = false;
+        }
+      } else {
+        error = "Failed to load study details";
+        loading = false;
+      }
     }
   }
 
@@ -427,7 +445,14 @@
         <!-- Header Section -->
       <Card class="mb-6">
         <CardHeader>
-          <CardTitle class="text-2xl mb-4">{study.title}</CardTitle>
+          <div class="flex items-start gap-3 mb-4">
+            <CardTitle class="text-2xl flex-1">{study.title}</CardTitle>
+            {#if isDraft}
+              <span class="px-3 py-1 rounded text-sm font-medium bg-gray-100 text-gray-800 border border-gray-300">
+                Draft / Unpublished
+              </span>
+            {/if}
+          </div>
 
           <!-- AI Plain Title Button -->
           <button

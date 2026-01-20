@@ -5,13 +5,27 @@
   import { Input } from "$lib/components/ui/input/index.js";
   import { Card, CardHeader, CardTitle, CardContent } from "$lib/components/ui/card/index.js";
   import { user } from '$lib/authStore';
-  import { getUserProfile, updateUserProfile, getUserParticipationRequests, withdrawParticipationRequest } from '$lib/supabase';
+  import {
+    getUserProfile,
+    updateUserProfile,
+    getUserParticipationRequests,
+    withdrawParticipationRequest,
+    isResearcher,
+    getUserStudies,
+    createDraftStudy,
+    updateStudy,
+    deleteStudy
+  } from '$lib/supabase';
 
-  let activeTab = 'requests'; // 'requests' or 'info'
+  let activeTab = 'requests'; // 'requests', 'studies', or 'info'
   let loading = true;
   let saveLoading = false;
   let requests = [];
   let showSuccessMessage = false;
+  let isUserResearcher = false;
+  let userStudies = [];
+  let showCreateForm = false;
+  let editingStudyId = null;
   let profile = {
     age: '',
     gender: '',
@@ -44,6 +58,22 @@
     'Cancer', 'Heart Disease', 'Arthritis', 'COPD', 'Other'
   ];
 
+  // Study form state
+  let studyForm = {
+    title: '',
+    source: '',
+    brief_summary: '',
+    detailed_description: '',
+    eligibility_criteria: '',
+    recruiting_status: 'RECRUITING',
+    study_type: 'INTERVENTIONAL',
+    conditions: [],
+    interventions: [],
+    locations: [],
+    contacts: [],
+    site_zips: []
+  };
+
   onMount(async () => {
     if (!$user) {
       goto('/login');
@@ -66,8 +96,21 @@
   async function loadData() {
     loading = true;
     try {
+      // Check if user is a researcher
+      isUserResearcher = await isResearcher();
+
+      // Set default tab based on researcher status
+      if (isUserResearcher && activeTab === 'requests') {
+        activeTab = 'studies';
+      }
+
       // Load participation requests
       requests = await getUserParticipationRequests();
+
+      // Load user studies if researcher
+      if (isUserResearcher) {
+        userStudies = await getUserStudies();
+      }
 
       // Load profile data
       const profileData = await getUserProfile($user.id);
@@ -124,6 +167,129 @@
       default: return 'bg-gray-100 text-gray-800';
     }
   }
+
+  // Study management functions
+  function resetStudyForm() {
+    studyForm = {
+      title: '',
+      source: '',
+      brief_summary: '',
+      detailed_description: '',
+      eligibility_criteria: '',
+      recruiting_status: 'RECRUITING',
+      study_type: 'INTERVENTIONAL',
+      conditions: [],
+      interventions: [],
+      locations: [],
+      contacts: [],
+      site_zips: []
+    };
+    editingStudyId = null;
+  }
+
+  function startEditStudy(study) {
+    studyForm = {
+      title: study.title || '',
+      source: study.source || '',
+      brief_summary: study.brief_summary || '',
+      detailed_description: study.detailed_description || '',
+      eligibility_criteria: study.eligibility_criteria || '',
+      recruiting_status: study.recruiting_status || 'RECRUITING',
+      study_type: study.study_type || 'INTERVENTIONAL',
+      conditions: study.conditions || [],
+      interventions: study.interventions || [],
+      locations: study.locations || [],
+      contacts: study.contacts || [],
+      site_zips: study.site_zips || []
+    };
+    editingStudyId = study.id;
+    showCreateForm = true;
+  }
+
+  async function handleCreateOrUpdateStudy() {
+    if (!studyForm.title.trim() || !studyForm.source.trim()) {
+      alert('Title and Source are required fields');
+      return;
+    }
+
+    // Normalize conditions to lowercase
+    const normalizedData = {
+      ...studyForm,
+      conditions: studyForm.conditions.map(c => c.toLowerCase().trim()),
+      site_zips: studyForm.site_zips.map(z => z.trim())
+    };
+
+    try {
+      if (editingStudyId) {
+        await updateStudy(editingStudyId, normalizedData);
+      } else {
+        await createDraftStudy(normalizedData);
+      }
+
+      // Reload studies
+      userStudies = await getUserStudies();
+      showCreateForm = false;
+      resetStudyForm();
+    } catch (err) {
+      console.error('Error saving study:', err);
+      if (err.message?.includes('policy')) {
+        alert('You do not have permission to create studies. Only researchers with .edu emails or allowlisted accounts can create studies.');
+      } else {
+        alert('Failed to save study. Please try again.');
+      }
+    }
+  }
+
+  async function handleDeleteStudy(studyId) {
+    if (!confirm('Are you sure you want to delete this study? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      await deleteStudy(studyId);
+      userStudies = await getUserStudies();
+    } catch (err) {
+      console.error('Error deleting study:', err);
+      alert('Failed to delete study. Please try again.');
+    }
+  }
+
+  async function handleTogglePublish(study) {
+    const action = study.is_published ? 'unpublish' : 'publish';
+    if (!confirm(`Are you sure you want to ${action} this study?`)) {
+      return;
+    }
+
+    try {
+      await updateStudy(study.id, { is_published: !study.is_published });
+      userStudies = await getUserStudies();
+    } catch (err) {
+      console.error('Error toggling publish status:', err);
+      alert(`Failed to ${action} study. Please try again.`);
+    }
+  }
+
+  function addConditionToStudy() {
+    const input = prompt('Enter condition (e.g., diabetes, asthma):');
+    if (input && input.trim()) {
+      studyForm.conditions = [...studyForm.conditions, input.trim()];
+    }
+  }
+
+  function removeConditionFromStudy(index) {
+    studyForm.conditions = studyForm.conditions.filter((_, i) => i !== index);
+  }
+
+  function addZipToStudy() {
+    const input = prompt('Enter ZIP code:');
+    if (input && input.trim()) {
+      studyForm.site_zips = [...studyForm.site_zips, input.trim()];
+    }
+  }
+
+  function removeZipFromStudy(index) {
+    studyForm.site_zips = studyForm.site_zips.filter((_, i) => i !== index);
+  }
 </script>
 
 <main class="min-h-screen bg-background p-6">
@@ -154,6 +320,13 @@
       <div class="border-b mb-6">
         <div class="flex gap-6">
           <button
+            on:click={() => activeTab = 'studies'}
+            class="pb-3 px-2 font-medium border-b-2 transition-colors {activeTab === 'studies' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'} {!isUserResearcher ? 'opacity-50' : ''}"
+            title={!isUserResearcher ? 'Only researchers can manage studies' : ''}
+          >
+            My Studies ({userStudies.length})
+          </button>
+          <button
             on:click={() => activeTab = 'requests'}
             class="pb-3 px-2 font-medium border-b-2 transition-colors {activeTab === 'requests' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}"
           >
@@ -167,6 +340,235 @@
           </button>
         </div>
       </div>
+
+      <!-- My Studies Tab -->
+      {#if activeTab === 'studies'}
+        <div class="space-y-4">
+          {#if !isUserResearcher}
+            <Card>
+              <CardContent class="p-8 text-center">
+                <p class="text-muted-foreground mb-2">Researcher access not enabled</p>
+                <p class="text-sm text-muted-foreground">Only users with .edu email addresses or manually allowlisted accounts can create and manage studies.</p>
+              </CardContent>
+            </Card>
+          {:else if showCreateForm}
+            <!-- Create/Edit Study Form -->
+            <Card>
+              <CardHeader>
+                <CardTitle>{editingStudyId ? 'Edit Study' : 'Create New Study'}</CardTitle>
+              </CardHeader>
+              <CardContent class="space-y-4">
+                <div class="space-y-2">
+                  <label for="study-title" class="text-sm font-medium">Title *</label>
+                  <Input
+                    id="study-title"
+                    bind:value={studyForm.title}
+                    placeholder="Study title"
+                  />
+                </div>
+
+                <div class="space-y-2">
+                  <label for="study-source" class="text-sm font-medium">Source * <span class="text-muted-foreground text-xs">(cannot be 'ctgov')</span></label>
+                  <Input
+                    id="study-source"
+                    bind:value={studyForm.source}
+                    placeholder="e.g., internal, stanford-med, etc."
+                  />
+                </div>
+
+                <div class="space-y-2">
+                  <label for="study-summary" class="text-sm font-medium">Brief Summary</label>
+                  <textarea
+                    id="study-summary"
+                    bind:value={studyForm.brief_summary}
+                    placeholder="Brief summary of the study"
+                    rows="3"
+                    class="w-full px-3 py-2 rounded-md border border-input bg-background text-sm"
+                  ></textarea>
+                </div>
+
+                <div class="space-y-2">
+                  <label for="study-description" class="text-sm font-medium">Detailed Description</label>
+                  <textarea
+                    id="study-description"
+                    bind:value={studyForm.detailed_description}
+                    placeholder="Detailed description"
+                    rows="4"
+                    class="w-full px-3 py-2 rounded-md border border-input bg-background text-sm"
+                  ></textarea>
+                </div>
+
+                <div class="space-y-2">
+                  <label for="study-eligibility" class="text-sm font-medium">Eligibility Criteria</label>
+                  <textarea
+                    id="study-eligibility"
+                    bind:value={studyForm.eligibility_criteria}
+                    placeholder="Eligibility criteria"
+                    rows="4"
+                    class="w-full px-3 py-2 rounded-md border border-input bg-background text-sm"
+                  ></textarea>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                  <div class="space-y-2">
+                    <label for="study-status" class="text-sm font-medium">Recruiting Status</label>
+                    <select
+                      id="study-status"
+                      bind:value={studyForm.recruiting_status}
+                      class="w-full px-3 py-2 rounded-md border border-input bg-background text-sm"
+                    >
+                      <option value="RECRUITING">Recruiting</option>
+                      <option value="NOT_YET_RECRUITING">Not Yet Recruiting</option>
+                      <option value="COMPLETED">Completed</option>
+                      <option value="SUSPENDED">Suspended</option>
+                    </select>
+                  </div>
+
+                  <div class="space-y-2">
+                    <label for="study-type" class="text-sm font-medium">Study Type</label>
+                    <select
+                      id="study-type"
+                      bind:value={studyForm.study_type}
+                      class="w-full px-3 py-2 rounded-md border border-input bg-background text-sm"
+                    >
+                      <option value="INTERVENTIONAL">Interventional</option>
+                      <option value="OBSERVATIONAL">Observational</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="space-y-2">
+                  <label class="text-sm font-medium">Conditions</label>
+                  <div class="flex flex-wrap gap-2 mb-2">
+                    {#each studyForm.conditions as condition, i}
+                      <span class="px-2 py-1 bg-primary/10 text-primary text-sm rounded-md flex items-center gap-1">
+                        {condition}
+                        <button
+                          type="button"
+                          on:click={() => removeConditionFromStudy(i)}
+                          class="text-primary hover:text-primary/70"
+                        >×</button>
+                      </span>
+                    {/each}
+                  </div>
+                  <button
+                    type="button"
+                    on:click={addConditionToStudy}
+                    class="text-sm px-3 py-1 border border-primary text-primary rounded-md hover:bg-primary/10"
+                  >+ Add Condition</button>
+                </div>
+
+                <div class="space-y-2">
+                  <label class="text-sm font-medium">Site ZIP Codes</label>
+                  <div class="flex flex-wrap gap-2 mb-2">
+                    {#each studyForm.site_zips as zip, i}
+                      <span class="px-2 py-1 bg-primary/10 text-primary text-sm rounded-md flex items-center gap-1">
+                        {zip}
+                        <button
+                          type="button"
+                          on:click={() => removeZipFromStudy(i)}
+                          class="text-primary hover:text-primary/70"
+                        >×</button>
+                      </span>
+                    {/each}
+                  </div>
+                  <button
+                    type="button"
+                    on:click={addZipToStudy}
+                    class="text-sm px-3 py-1 border border-primary text-primary rounded-md hover:bg-primary/10"
+                  >+ Add ZIP</button>
+                </div>
+
+                <div class="flex gap-3 justify-end pt-4">
+                  <button
+                    on:click={() => { showCreateForm = false; resetStudyForm(); }}
+                    class="px-4 py-2 border border-input rounded-md text-sm font-medium hover:bg-accent"
+                  >Cancel</button>
+                  <button
+                    on:click={handleCreateOrUpdateStudy}
+                    class="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90"
+                  >{editingStudyId ? 'Update Study' : 'Create Draft'}</button>
+                </div>
+              </CardContent>
+            </Card>
+          {:else}
+            <!-- Studies List -->
+            <div class="mb-4">
+              <button
+                on:click={() => showCreateForm = true}
+                class="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90"
+              >+ Create New Study</button>
+            </div>
+
+            {#if userStudies.length === 0}
+              <Card>
+                <CardContent class="p-8 text-center">
+                  <p class="text-muted-foreground mb-4">You haven't created any studies yet.</p>
+                  <p class="text-sm text-muted-foreground">Click "Create New Study" above to get started.</p>
+                </CardContent>
+              </Card>
+            {:else}
+              {#each userStudies as study}
+                <Card>
+                  <CardHeader>
+                    <div class="flex justify-between items-start">
+                      <div class="flex-1">
+                        <CardTitle class="text-lg mb-2">
+                          {study.title}
+                        </CardTitle>
+                        <div class="flex items-center gap-2 mb-2">
+                          <span class="px-2 py-1 rounded text-xs font-medium {study.is_published ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}">
+                            {study.is_published ? 'Published' : 'Draft'}
+                          </span>
+                          {#if study.recruiting_status}
+                            <span class="px-2 py-1 rounded text-xs font-medium bg-primary/10 text-primary">
+                              {study.recruiting_status}
+                            </span>
+                          {/if}
+                          <span class="px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                            {study.source}
+                          </span>
+                        </div>
+                        {#if study.brief_summary}
+                          <p class="text-sm text-muted-foreground line-clamp-2">{study.brief_summary}</p>
+                        {/if}
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div class="flex justify-between items-center text-sm">
+                      <div class="text-muted-foreground">
+                        <p>Created: {new Date(study.created_at).toLocaleDateString()}</p>
+                        {#if study.conditions && study.conditions.length > 0}
+                          <p>Conditions: {study.conditions.slice(0, 3).join(', ')}{study.conditions.length > 3 ? '...' : ''}</p>
+                        {/if}
+                      </div>
+                      <div class="flex gap-2">
+                        <button
+                          on:click={() => goto(`/study/${study.id}`)}
+                          class="px-3 py-1 border border-input rounded-md text-sm hover:bg-accent"
+                        >View</button>
+                        <button
+                          on:click={() => startEditStudy(study)}
+                          class="px-3 py-1 border border-input rounded-md text-sm hover:bg-accent"
+                        >Edit</button>
+                        <button
+                          on:click={() => handleTogglePublish(study)}
+                          class="px-3 py-1 border border-primary text-primary rounded-md text-sm hover:bg-primary/10"
+                        >{study.is_published ? 'Unpublish' : 'Publish'}</button>
+                        <button
+                          on:click={() => handleDeleteStudy(study.id)}
+                          class="px-3 py-1 border border-destructive text-destructive rounded-md text-sm hover:bg-destructive/10"
+                        >Delete</button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              {/each}
+            {/if}
+          {/if}
+        </div>
+      {/if}
 
       <!-- Participation Requests Tab -->
       {#if activeTab === 'requests'}

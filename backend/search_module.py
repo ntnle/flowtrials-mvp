@@ -460,10 +460,13 @@ def insert_study(study_data: StudyCreate) -> Study:
 
 
 def get_study_by_id(study_id: int) -> Study:
-    """Retrieve a study by ID"""
+    """Retrieve a study by ID (published only)"""
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM studies WHERE id = %s", (study_id,))
+        cursor.execute(
+            "SELECT * FROM studies WHERE id = %s AND is_published = TRUE",
+            (study_id,)
+        )
         row = cursor.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Study not found")
@@ -471,10 +474,10 @@ def get_study_by_id(study_id: int) -> Study:
 
 
 def list_all_studies() -> List[Study]:
-    """Retrieve all studies"""
+    """Retrieve all studies (published only)"""
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM studies ORDER BY id")
+        cursor.execute("SELECT * FROM studies WHERE is_published = TRUE ORDER BY id")
         rows = cursor.fetchall()
         return [_row_to_study(dict(row)) for row in rows]
 
@@ -624,7 +627,7 @@ def search_studies_semantic(request: SearchRequest) -> SearchResponse:
     with get_db() as conn:
         cursor = conn.cursor()
 
-        # Fetch vector similarity candidates (top 150)
+        # Fetch vector similarity candidates (top 150, published only)
         cursor.execute("""
             SELECT id, source, source_id, title, brief_summary, detailed_description,
                    description, eligibility_criteria, recruiting_status, study_type,
@@ -632,7 +635,7 @@ def search_studies_semantic(request: SearchRequest) -> SearchResponse:
                    created_at, updated_at, ai_plain_title,
                    (embedding <=> %s::vector) as similarity_distance
             FROM studies
-            WHERE embedding IS NOT NULL
+            WHERE embedding IS NOT NULL AND is_published = TRUE
             ORDER BY similarity_distance
             LIMIT 150
         """, (query_embedding,))
@@ -641,14 +644,14 @@ def search_studies_semantic(request: SearchRequest) -> SearchResponse:
         for row in vector_candidates:
             candidate_map[row["id"]] = (row, row.get("similarity_distance", 1.0))
 
-        # Fetch keyword/trigram candidates (top 50)
+        # Fetch keyword/trigram candidates (top 50, published only)
         cursor.execute("""
             SELECT id, source, source_id, title, brief_summary, detailed_description,
                    description, eligibility_criteria, recruiting_status, study_type,
                    interventions, conditions, locations, contacts, site_zips,
                    created_at, updated_at, ai_plain_title
             FROM studies
-            WHERE search_text %% %s
+            WHERE search_text %% %s AND is_published = TRUE
             ORDER BY similarity(search_text, %s) DESC
             LIMIT 50
         """, (request.query_text.lower(), request.query_text.lower()))

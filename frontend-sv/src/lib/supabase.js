@@ -170,6 +170,85 @@ export async function withdrawParticipationRequest(requestId) {
 }
 
 /**
+ * Researcher helpers
+ */
+
+export async function isResearcher() {
+  try {
+    const { data, error } = await supabase.rpc('is_researcher');
+    if (error) throw error;
+    return data || false;
+  } catch (err) {
+    console.error('Error checking researcher status:', err);
+    return false;
+  }
+}
+
+export async function getUserStudies() {
+  const user = await getCurrentUser();
+  if (!user) return [];
+
+  const { data, error } = await supabase
+    .from('studies')
+    .select('*')
+    .eq('created_by', user.id)
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  return data;
+}
+
+export async function createDraftStudy(studyData) {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('Must be logged in to create study');
+
+  const { data, error } = await supabase
+    .from('studies')
+    .insert({
+      ...studyData,
+      created_by: user.id,
+      is_published: false
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function updateStudy(studyId, studyData) {
+  const { data, error } = await supabase
+    .from('studies')
+    .update(studyData)
+    .eq('id', studyId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteStudy(studyId) {
+  const { error } = await supabase
+    .from('studies')
+    .delete()
+    .eq('id', studyId);
+
+  if (error) throw error;
+}
+
+export async function getStudyByIdSupabase(studyId) {
+  const { data, error } = await supabase
+    .from('studies')
+    .select('*')
+    .eq('id', studyId)
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+/**
  * Auth state listener
  */
 

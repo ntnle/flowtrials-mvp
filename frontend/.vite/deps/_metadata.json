@@ -1,15 +1,8 @@
 {
-  "hash": "c73b9f04",
-  "configHash": "005f685e",
-  "lockfileHash": "b93f9e21",
-  "browserHash": "387e9a8b",
-  "optimized": {
-    "svelte": {
-      "src": "../../node_modules/.pnpm/svelte@5.46.1/node_modules/svelte/src/index-client.js",
-      "file": "svelte.js",
-      "fileHash": "f8a81943",
-      "needsInterop": false
-    }
-  },
+  "hash": "3a852dd7",
+  "configHash": "384c95e0",
+  "lockfileHash": "e3b0c442",
+  "browserHash": "e01cd1d9",
+  "optimized": {},
   "chunks": {}
 }

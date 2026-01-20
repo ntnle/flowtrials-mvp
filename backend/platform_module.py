@@ -51,10 +51,10 @@ def get_db():
 
 
 def count_studies() -> int:
-    """Count total studies in database"""
+    """Count total published studies in database"""
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) as count FROM studies")
+        cursor.execute("SELECT COUNT(*) as count FROM studies WHERE is_published = TRUE")
         return cursor.fetchone()['count']
 
 
@@ -116,9 +116,9 @@ def register_startup_handler(app: FastAPI):
         try:
             with get_db() as conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT COUNT(*) as count FROM studies")
+                cursor.execute("SELECT COUNT(*) as count FROM studies WHERE is_published = TRUE")
                 count = cursor.fetchone()['count']
-                print(f"Successfully connected! Found {count} studies in database.")
+                print(f"Successfully connected! Found {count} published studies in database.")
         except Exception as e:
             print(f"Warning: Could not connect to database: {e}")
             print("Make sure Supabase is running: supabase start")
