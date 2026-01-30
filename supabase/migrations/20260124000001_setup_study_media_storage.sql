@@ -56,7 +56,3 @@ CREATE POLICY "Study owners can delete their media"
       )
     )
   );
-
-COMMENT ON POLICY "Public can view study media" ON storage.objects IS 'Anyone can view/download study media files';
-COMMENT ON POLICY "Researchers can upload study media" ON storage.objects IS 'Authenticated researchers can upload files to study-media bucket';
-COMMENT ON POLICY "Study owners can delete their media" ON storage.objects IS 'Study owners can delete files from their study folder';
