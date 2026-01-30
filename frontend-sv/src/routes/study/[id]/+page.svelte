@@ -919,6 +919,16 @@
             <CardTitle class="text-lg">Media & Supplemental Materials</CardTitle>
           </CardHeader>
           <CardContent>
+            <!-- DEBUG: Remove this after testing -->
+            <div class="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-xs">
+              <p class="font-bold">DEBUG INFO:</p>
+              <p>Media count: {study.media.length}</p>
+              {#each study.media as item, i}
+                <p>File {i+1}: path={item.path}, caption={item.caption || 'none'}</p>
+                <p>Generated URL: {getPublicMediaUrl(item.path)}</p>
+              {/each}
+            </div>
+            <!-- END DEBUG -->
             <div class="grid gap-4 md:grid-cols-2">
               {#each study.media as item}
                 <div class="space-y-2">
