@@ -249,6 +249,48 @@ export async function getStudyByIdSupabase(studyId) {
 }
 
 /**
+ * Storage helpers for study media
+ */
+
+export async function uploadStudyMedia(studyId, file) {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('Must be logged in to upload media');
+
+  // Generate unique filename
+  const timestamp = Date.now();
+  const sanitizedName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+  const filename = `${timestamp}_${sanitizedName}`;
+  const path = `${studyId}/${filename}`;
+
+  // Upload to storage
+  const { data, error } = await supabase.storage
+    .from('study-media')
+    .upload(path, file, {
+      cacheControl: '3600',
+      upsert: false
+    });
+
+  if (error) throw error;
+  return data.path;
+}
+
+export async function deleteStudyMedia(path) {
+  const { error } = await supabase.storage
+    .from('study-media')
+    .remove([path]);
+
+  if (error) throw error;
+}
+
+export function getPublicMediaUrl(path) {
+  const { data } = supabase.storage
+    .from('study-media')
+    .getPublicUrl(path);
+
+  return data.publicUrl;
+}
+
+/**
  * Auth state listener
  */
 

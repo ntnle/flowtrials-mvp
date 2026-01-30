@@ -14,12 +14,17 @@
     getUserStudies,
     createDraftStudy,
     updateStudy,
-    deleteStudy
+    deleteStudy,
+    uploadStudyMedia,
+    deleteStudyMedia,
+    getPublicMediaUrl
   } from '$lib/supabase';
 
   let activeTab = 'requests'; // 'requests', 'studies', or 'info'
   let loading = true;
   let saveLoading = false;
+  let uploadingMedia = false;
+  let uploadError = '';
   let requests = [];
   let showSuccessMessage = false;
   let isUserResearcher = false;
@@ -71,7 +76,8 @@
     interventions: [],
     locations: [],
     contacts: [],
-    site_zips: []
+    site_zips: [],
+    media: []
   };
 
   onMount(async () => {
@@ -182,7 +188,8 @@
       interventions: [],
       locations: [],
       contacts: [],
-      site_zips: []
+      site_zips: [],
+      media: []
     };
     editingStudyId = null;
   }
@@ -200,7 +207,8 @@
       interventions: study.interventions || [],
       locations: study.locations || [],
       contacts: study.contacts || [],
-      site_zips: study.site_zips || []
+      site_zips: study.site_zips || [],
+      media: study.media || []
     };
     editingStudyId = study.id;
     showCreateForm = true;
@@ -289,6 +297,84 @@
 
   function removeZipFromStudy(index) {
     studyForm.site_zips = studyForm.site_zips.filter((_, i) => i !== index);
+  }
+
+  async function handleMediaFileSelect(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validate file count
+    if (studyForm.media.length >= 10) {
+      uploadError = 'Maximum 10 files allowed per study';
+      setTimeout(() => uploadError = '', 3000);
+      event.target.value = '';
+      return;
+    }
+
+    // Validate file size (5MB)
+    if (file.size > 5242880) {
+      uploadError = 'File size must be under 5MB';
+      setTimeout(() => uploadError = '', 3000);
+      event.target.value = '';
+      return;
+    }
+
+    // Validate file type
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml', 'application/pdf'];
+    if (!allowedTypes.includes(file.type)) {
+      uploadError = 'Only images (JPEG, PNG, WebP, GIF, SVG) and PDFs are allowed';
+      setTimeout(() => uploadError = '', 3000);
+      event.target.value = '';
+      return;
+    }
+
+    uploadingMedia = true;
+    uploadError = '';
+
+    try {
+      // Need a temporary study ID for uploads during edit
+      // For new studies, we'll upload after creation
+      if (!editingStudyId) {
+        uploadError = 'Please save the study first before uploading media';
+        setTimeout(() => uploadError = '', 3000);
+        event.target.value = '';
+        return;
+      }
+
+      const path = await uploadStudyMedia(editingStudyId, file);
+      const caption = prompt('Enter optional caption for this file:') || '';
+
+      studyForm.media = [...studyForm.media, { path, caption: caption.trim() }];
+      event.target.value = ''; // Reset input
+    } catch (err) {
+      console.error('Upload error:', err);
+      uploadError = err.message || 'Failed to upload file';
+      setTimeout(() => uploadError = '', 3000);
+    } finally {
+      uploadingMedia = false;
+      event.target.value = '';
+    }
+  }
+
+  async function removeMediaFromStudy(index) {
+    const mediaItem = studyForm.media[index];
+
+    if (!confirm('Delete this file? This cannot be undone.')) {
+      return;
+    }
+
+    try {
+      // Delete from storage
+      if (mediaItem.path) {
+        await deleteStudyMedia(mediaItem.path);
+      }
+
+      // Remove from form
+      studyForm.media = studyForm.media.filter((_, i) => i !== index);
+    } catch (err) {
+      console.error('Delete error:', err);
+      alert('Failed to delete file. Please try again.');
+    }
   }
 </script>
 
@@ -477,6 +563,79 @@
                     on:click={addZipToStudy}
                     class="text-sm px-3 py-1 border border-primary text-primary rounded-md hover:bg-primary/10"
                   >+ Add ZIP</button>
+                </div>
+
+                <div class="space-y-2">
+                  <label class="text-sm font-medium">Media (Supplemental Materials)</label>
+                  <p class="text-xs text-muted-foreground mb-2">Upload posters, images (JPEG, PNG, WebP, GIF, SVG), or PDFs. Max 5MB per file, 10 files total.</p>
+
+                  {#if !editingStudyId}
+                    <p class="text-xs text-amber-600 bg-amber-50 dark:bg-amber-950/20 p-2 rounded border border-amber-200 dark:border-amber-900">
+                      Note: Save the study first before uploading media files.
+                    </p>
+                  {/if}
+
+                  {#if uploadError}
+                    <div class="text-xs text-destructive bg-destructive/10 p-2 rounded">
+                      {uploadError}
+                    </div>
+                  {/if}
+
+                  <div class="grid grid-cols-2 gap-3 mb-2">
+                    {#each studyForm.media as item, i}
+                      <div class="relative border border-border rounded-md p-2 bg-muted/30">
+                        <button
+                          type="button"
+                          on:click={() => removeMediaFromStudy(i)}
+                          class="absolute top-1 right-1 w-6 h-6 bg-destructive text-destructive-foreground rounded-full text-xs font-bold hover:bg-destructive/90"
+                        >×</button>
+
+                        <div class="pr-7">
+                          {#if item.path?.endsWith('.pdf')}
+                            <div class="flex items-center gap-2 mb-1">
+                              <svg class="w-8 h-8 text-muted-foreground" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"/>
+                              </svg>
+                              <span class="text-xs font-medium truncate">PDF</span>
+                            </div>
+                          {:else}
+                            <img
+                              src={getPublicMediaUrl(item.path)}
+                              alt={item.caption || 'Study media'}
+                              class="w-full h-24 object-cover rounded mb-1"
+                            />
+                          {/if}
+                          {#if item.caption}
+                            <p class="text-xs text-muted-foreground truncate">{item.caption}</p>
+                          {:else}
+                            <p class="text-xs text-muted-foreground italic">No caption</p>
+                          {/if}
+                        </div>
+                      </div>
+                    {/each}
+                  </div>
+
+                  {#if studyForm.media.length < 10}
+                    <div class="flex items-center gap-2">
+                      <label class="cursor-pointer">
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml,application/pdf"
+                          on:change={handleMediaFileSelect}
+                          disabled={uploadingMedia || !editingStudyId}
+                          class="hidden"
+                        />
+                        <span class="inline-block text-sm px-3 py-1.5 border border-primary text-primary rounded-md hover:bg-primary/10 {uploadingMedia || !editingStudyId ? 'opacity-50 cursor-not-allowed' : ''}">
+                          {uploadingMedia ? 'Uploading...' : '+ Upload File'}
+                        </span>
+                      </label>
+                      <span class="text-xs text-muted-foreground">
+                        {studyForm.media.length}/10 files
+                      </span>
+                    </div>
+                  {:else}
+                    <p class="text-xs text-muted-foreground">Maximum 10 files reached</p>
+                  {/if}
                 </div>
 
                 <div class="flex gap-3 justify-end pt-4">

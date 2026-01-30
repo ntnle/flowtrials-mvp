@@ -2,7 +2,7 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import { getStudyById, generateEligibilityQuiz, generateStudySummary, generatePlainTitle } from '$lib/api.js';
-  import { createParticipationRequest, getStudyByIdSupabase } from '$lib/supabase.js';
+  import { createParticipationRequest, getStudyByIdSupabase, getPublicMediaUrl } from '$lib/supabase.js';
   import { user } from '$lib/authStore';
   import { Card, CardHeader, CardTitle, CardContent } from '$lib/components/ui/card/index.js';
 
@@ -422,6 +422,11 @@
           {#if study.locations && study.locations.length > 0}
             <button on:click={() => scrollToSection('locations')} class="w-full text-left px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors">
               Locations
+            </button>
+          {/if}
+          {#if study.media && study.media.length > 0}
+            <button on:click={() => scrollToSection('media')} class="w-full text-left px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors">
+              Media
             </button>
           {/if}
           {#if study.contacts && study.contacts.length > 0}
@@ -903,6 +908,58 @@
           </CardHeader>
           <CardContent>
             <p class="text-sm text-muted-foreground">No locations listed</p>
+          </CardContent>
+        </Card>
+      {/if}
+
+      <!-- Media Section -->
+      {#if study.media && study.media.length > 0}
+        <Card class="mb-6" id="media">
+          <CardHeader>
+            <CardTitle class="text-lg">Media & Supplemental Materials</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div class="grid gap-4 md:grid-cols-2">
+              {#each study.media as item}
+                <div class="space-y-2">
+                  {#if item.path?.endsWith('.pdf')}
+                    <!-- PDF Display -->
+                    <a
+                      href={getPublicMediaUrl(item.path)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="flex items-center gap-3 p-4 border border-border rounded-md hover:bg-muted transition-colors"
+                    >
+                      <svg class="w-12 h-12 text-muted-foreground flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"/>
+                      </svg>
+                      <div class="flex-1 min-w-0">
+                        <p class="text-sm font-medium text-foreground">PDF Document</p>
+                        <p class="text-xs text-muted-foreground">Click to view</p>
+                      </div>
+                      <svg class="w-5 h-5 text-muted-foreground flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                      </svg>
+                    </a>
+                  {:else}
+                    <!-- Image Display -->
+                    <img
+                      src={getPublicMediaUrl(item.path)}
+                      alt={item.caption || 'Study material'}
+                      class="w-full h-auto rounded-md border border-border"
+                      on:error={(e) => {
+                        e.target.src = '';
+                        e.target.alt = 'Image failed to load';
+                        e.target.classList.add('hidden');
+                      }}
+                    />
+                  {/if}
+                  {#if item.caption}
+                    <p class="text-sm text-muted-foreground text-center">{item.caption}</p>
+                  {/if}
+                </div>
+              {/each}
+            </div>
           </CardContent>
         </Card>
       {/if}
