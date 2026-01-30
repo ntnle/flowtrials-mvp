@@ -88,6 +88,7 @@ class StudyCreate(BaseModel):
     locations: List[Location] = Field(default_factory=list)
     contacts: List[Contact] = Field(default_factory=list)
     site_zips: List[str] = Field(default_factory=list)
+    media: List[dict] = Field(default_factory=list)
     source: str = "internal"
     source_id: Optional[str] = None
     raw_json: Optional[str] = None
@@ -109,6 +110,7 @@ class Study(BaseModel):
     locations: List[Location]
     contacts: List[Contact]
     site_zips: List[str]
+    media: List[dict] = Field(default_factory=list)
     raw_json: Optional[str] = None
     last_synced_at: Optional[str] = None
     created_at: str
@@ -416,6 +418,7 @@ def insert_study(study_data: StudyCreate) -> Study:
     interventions_json = Jsonb([i.model_dump() for i in study_data.interventions])
     locations_json = Jsonb([loc.model_dump() for loc in study_data.locations])
     contacts_json = Jsonb([c.model_dump() for c in study_data.contacts])
+    media_json = Jsonb(study_data.media if study_data.media else [])
 
     # Prepare raw_json - convert to Json adapter if it's a string
     raw_json_data = study_data.raw_json
@@ -430,9 +433,9 @@ def insert_study(study_data: StudyCreate) -> Study:
             INSERT INTO studies
             (source, source_id, title, brief_summary, detailed_description,
              eligibility_criteria, recruiting_status, study_type, interventions,
-             conditions, locations, contacts, site_zips, raw_json,
+             conditions, locations, contacts, site_zips, media, raw_json,
              last_synced_at, created_at, updated_at, description)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
         """, (
             study_data.source,
@@ -448,6 +451,7 @@ def insert_study(study_data: StudyCreate) -> Study:
             locations_json,
             contacts_json,
             normalized_zips,
+            media_json,
             raw_json_data,
             now if study_data.source == "ctgov" else None,
             now,
@@ -488,6 +492,7 @@ def _row_to_study(row: dict) -> Study:
     interventions_data = row["interventions"] if row["interventions"] else []
     locations_data = row["locations"] if row["locations"] else []
     contacts_data = row["contacts"] if row["contacts"] else []
+    media_data = row.get("media") if row.get("media") else []
 
     # Convert raw_json to JSON string if it's a dict (for API response)
     raw_json_value = row["raw_json"]
@@ -515,6 +520,7 @@ def _row_to_study(row: dict) -> Study:
         locations=[Location(**loc) for loc in locations_data],
         contacts=[Contact(**c) for c in contacts_data],
         site_zips=row["site_zips"],
+        media=media_data,
         raw_json=raw_json_value,
         last_synced_at=row["last_synced_at"].isoformat() if row["last_synced_at"] else None,
         created_at=row["created_at"].isoformat() if row["created_at"] else None,
