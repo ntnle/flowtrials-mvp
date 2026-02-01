@@ -2,7 +2,7 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import { getStudyById, generateEligibilityQuiz, generateStudySummary, generatePlainTitle } from '$lib/api.js';
-  import { createParticipationRequest, getStudyByIdSupabase, getPublicMediaUrl } from '$lib/supabase.js';
+  import { createParticipationRequest, getStudyByIdSupabase, getPublicMediaUrl, getMyParticipationForStudy, acknowledgeConsent } from '$lib/supabase.js';
   import { user } from '$lib/authStore';
   import { Card, CardHeader, CardTitle, CardContent } from '$lib/components/ui/card/index.js';
 
@@ -35,6 +35,12 @@
   let aiTitleError = '';
   let aiTitleExpanded = false;
 
+  // Participation and consent state
+  let myParticipation = null;
+  let loadingParticipation = false;
+  let showConsentModal = false;
+  let consentLoading = false;
+
   let loadedStudyId = null;
   $: if (studyId && studyId !== loadedStudyId) {
     loadedStudyId = studyId;
@@ -54,6 +60,7 @@
     error = null;
     study = null;
     isDraft = false;
+    myParticipation = null;
 
     try {
       // Try loading from FastAPI first (published studies)
@@ -94,7 +101,50 @@
         loading = false;
       }
     }
+
+    // Load participation status for logged-in users
+    if ($user && studyId) {
+      await loadMyParticipation(studyId);
+    }
   }
+
+  async function loadMyParticipation(studyId) {
+    loadingParticipation = true;
+    try {
+      myParticipation = await getMyParticipationForStudy(studyId);
+    } catch (err) {
+      console.error('Error loading participation:', err);
+      myParticipation = null;
+    } finally {
+      loadingParticipation = false;
+    }
+  }
+
+  function handleAcknowledgeConsent() {
+    showConsentModal = true;
+  }
+
+  async function confirmConsentAcknowledgment() {
+    if (!myParticipation) return;
+    consentLoading = true;
+    try {
+      myParticipation = await acknowledgeConsent(myParticipation.id);
+      showConsentModal = false;
+    } catch (err) {
+      console.error('Error acknowledging consent:', err);
+      alert('Failed to acknowledge consent. Please try again.');
+    } finally {
+      consentLoading = false;
+    }
+  }
+
+  function closeConsentModal() {
+    showConsentModal = false;
+  }
+
+  // Computed: check if user can access tasks
+  $: canAccessTasks = myParticipation?.status === 'approved' && myParticipation?.consent_acknowledged_at;
+  $: needsConsent = myParticipation?.status === 'approved' && !myParticipation?.consent_acknowledged_at;
 
   function handleRequestParticipate() {
     // Check if user is logged in
@@ -995,15 +1045,53 @@
         </Card>
       {/if}
 
-      <!-- Action Buttons -->
+      <!-- Participation Status & Actions -->
       <Card class="mb-6">
         <CardContent class="p-6">
-          <button
-            on:click={handleRequestParticipate}
-            class="w-full px-6 py-3 bg-primary text-primary-foreground rounded-md font-semibold hover:opacity-90 transition-opacity"
-          >
-            Participate
-          </button>
+          {#if $user && myParticipation}
+            <!-- Show participation status -->
+            <div class="mb-4 p-4 rounded-md border {myParticipation.status === 'approved' ? 'bg-green-50 border-green-200 dark:bg-green-950/20 dark:border-green-900' : myParticipation.status === 'pending' ? 'bg-yellow-50 border-yellow-200 dark:bg-yellow-950/20 dark:border-yellow-900' : myParticipation.status === 'rejected' ? 'bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-900' : 'bg-gray-50 border-gray-200 dark:bg-gray-950/20 dark:border-gray-700'}">
+              <div class="flex items-center gap-2 mb-2">
+                <span class="font-medium text-sm">Your Participation Status:</span>
+                <span class="px-2 py-0.5 rounded text-xs font-medium {myParticipation.status === 'approved' ? 'bg-green-100 text-green-800' : myParticipation.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : myParticipation.status === 'rejected' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'}">
+                  {myParticipation.status.charAt(0).toUpperCase() + myParticipation.status.slice(1)}
+                </span>
+              </div>
+
+              {#if myParticipation.status === 'pending'}
+                <p class="text-sm text-muted-foreground">Your request is being reviewed by the study team.</p>
+              {:else if myParticipation.status === 'approved'}
+                {#if needsConsent}
+                  <p class="text-sm text-muted-foreground mb-3">You've been approved! Please acknowledge consent to access study tasks.</p>
+                  <button
+                    on:click={handleAcknowledgeConsent}
+                    class="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90"
+                  >
+                    Acknowledge Consent
+                  </button>
+                {:else if canAccessTasks}
+                  <p class="text-sm text-green-700 dark:text-green-300 mb-3">
+                    Consent acknowledged on {new Date(myParticipation.consent_acknowledged_at).toLocaleDateString()}. You can now access study tasks.
+                  </p>
+                  <div class="p-3 bg-muted rounded-md text-center">
+                    <p class="text-sm text-muted-foreground">Study tasks coming soon.</p>
+                  </div>
+                {/if}
+              {:else if myParticipation.status === 'rejected'}
+                <p class="text-sm text-muted-foreground">Unfortunately, your request was not approved for this study.</p>
+              {:else if myParticipation.status === 'withdrawn'}
+                <p class="text-sm text-muted-foreground">You have withdrawn from this study.</p>
+              {/if}
+            </div>
+          {:else}
+            <!-- No participation yet - show participate button -->
+            <button
+              on:click={handleRequestParticipate}
+              class="w-full px-6 py-3 bg-primary text-primary-foreground rounded-md font-semibold hover:opacity-90 transition-opacity"
+            >
+              Participate
+            </button>
+          {/if}
         </CardContent>
       </Card>
 
@@ -1015,6 +1103,79 @@
           {/if}
         </div>
       </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Consent Acknowledgment Modal -->
+{#if showConsentModal}
+  <div
+    class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+    role="button"
+    tabindex="0"
+    aria-label="Close consent modal"
+    on:click={closeConsentModal}
+    on:keydown={(e) => {
+      if (e.key === 'Escape') closeConsentModal();
+    }}
+  >
+    <div
+      role="dialog"
+      aria-modal="true"
+      tabindex="-1"
+      on:click|stopPropagation
+      on:keydown|stopPropagation={() => {}}
+    >
+      <Card class="max-w-lg w-full bg-card text-card-foreground border border-border shadow-2xl">
+        <CardHeader>
+          <CardTitle>Acknowledge Consent</CardTitle>
+        </CardHeader>
+        <CardContent class="space-y-4">
+          <p class="text-sm text-muted-foreground">
+            Before participating in this study, please review the consent information provided by the research team.
+          </p>
+
+          <!-- Consent media would be displayed here if available -->
+          {#if study?.media?.some(m => m.kind === 'consent')}
+            <div class="border border-border rounded-md p-4 bg-muted/30">
+              <p class="text-sm font-medium mb-2">Consent Documents:</p>
+              {#each study.media.filter(m => m.kind === 'consent') as doc}
+                <a
+                  href={getPublicMediaUrl(doc.path)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="text-sm text-primary hover:underline flex items-center gap-2"
+                >
+                  View: {doc.caption || 'Consent Document'}
+                </a>
+              {/each}
+            </div>
+          {:else}
+            <div class="border border-border rounded-md p-4 bg-muted/30">
+              <p class="text-sm text-muted-foreground">
+                By clicking "I Acknowledge", you confirm that you have been informed about this study and consent to participate according to the study protocol.
+              </p>
+            </div>
+          {/if}
+
+          <div class="flex gap-3 pt-2">
+            <button
+              on:click={closeConsentModal}
+              disabled={consentLoading}
+              class="flex-1 px-4 py-2 border border-input rounded-md text-sm font-medium hover:bg-accent transition-colors disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              on:click={confirmConsentAcknowledgment}
+              disabled={consentLoading}
+              class="flex-1 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+            >
+              {consentLoading ? 'Processing...' : 'I Acknowledge'}
+            </button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   </div>
 {/if}

@@ -32,11 +32,12 @@ Clinical trial discovery and participation platform where users search studies, 
 
 ## WIP Features (Next Up)
 
-### Phase 1: Participation Management (Researcher-Facing)
-- Consent acknowledgment tracking on participation requests
-- Researcher UI to approve/reject participation and view consent status
-- RLS policy so study owners can SELECT participation requests for their studies
-- Participant gating: must be approved and consent-acknowledged to proceed
+### Phase 1: Participation Management (Researcher-Facing) ✓ COMPLETED
+- ✓ Consent acknowledgment tracking (`consent_acknowledged_at` column on `participation_requests`)
+- ✓ Researcher UI to approve/reject participation (Profile → My Studies → Requests button)
+- ✓ RLS policies for study owners to SELECT/UPDATE participation requests for their studies
+- ✓ Participant gating: must be approved AND consent-acknowledged to access tasks
+- ✓ Researcher can reset consent if consent documents change
 
 ### Phase 2: Task Framework (Surveys First)
 - Tasks stored on `studies.tasks` as JSON (pages + blocks)
@@ -149,6 +150,12 @@ Quick reference for where each operation goes:
 | Create request | Supabase SDK | PostgreSQL `participation_requests` | `supabase.js` | RLS: authenticated |
 | Get my requests | Supabase SDK | PostgreSQL `participation_requests` | `supabase.js` | RLS: own requests |
 | Withdraw request | Supabase SDK | PostgreSQL `participation_requests` | `supabase.js` | RLS: own requests |
+| Get my participation for study | Supabase SDK | PostgreSQL `participation_requests` | `supabase.js` | RLS: own requests |
+| Acknowledge consent | Supabase SDK | PostgreSQL `participation_requests` | `supabase.js` | Sets consent_acknowledged_at |
+| **Researcher Participation Mgmt** | | | | |
+| Get study requests | Supabase SDK | PostgreSQL `participation_requests` | `supabase.js` | RLS: study owner |
+| Approve/reject request | Supabase SDK | PostgreSQL `participation_requests` | `supabase.js` | RLS: study owner |
+| Reset consent | Supabase SDK | PostgreSQL `participation_requests` | `supabase.js` | RLS: study owner |
 | **Researcher** | | | | |
 | Check if researcher | Supabase RPC | PostgreSQL function | `supabase.js` | Checks .edu or allowlist |
 | Get my studies | Supabase SDK | PostgreSQL `studies` | `supabase.js` | RLS: created_by = me |
@@ -320,11 +327,12 @@ Participant interest in studies.
 - `status` (text): 'pending', 'contacted', 'approved', 'rejected', 'withdrawn'
 - `notes` (text): Participant message
 - `contact_preference` (text): 'email', 'phone', 'portal'
+- `consent_acknowledged_at` (timestamptz): When participant acknowledged consent (NULL = not yet)
 - `UNIQUE(user_id, study_id)`: One request per user per study
 
 **RLS:**
 - Users can SELECT/INSERT/UPDATE own requests
-- Study owners do **not** currently have an RLS policy to SELECT requests for their studies (TODO)
+- Study owners can SELECT/UPDATE requests for their studies (approve/reject, reset consent)
 
 #### `researcher_allowlist_emails`
 Manual researcher access (supplements .edu auto-detection).

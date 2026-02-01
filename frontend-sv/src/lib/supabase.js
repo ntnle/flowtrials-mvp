@@ -170,6 +170,93 @@ export async function withdrawParticipationRequest(requestId) {
 }
 
 /**
+ * Researcher participation request helpers
+ */
+
+export async function getStudyParticipationRequests(studyId) {
+  // Fetch participation requests
+  const { data: requests, error: reqError } = await supabase
+    .from('participation_requests')
+    .select('*')
+    .eq('study_id', studyId)
+    .order('created_at', { ascending: false });
+
+  if (reqError) throw reqError;
+  if (!requests || requests.length === 0) return [];
+
+  // Fetch user profiles for these participants
+  const userIds = requests.map(r => r.user_id);
+  const { data: profiles, error: profError } = await supabase
+    .from('user_profiles')
+    .select('id, age, gender, conditions, zip_code')
+    .in('id', userIds);
+
+  if (profError) throw profError;
+
+  // Merge profiles into requests
+  const profileMap = new Map((profiles || []).map(p => [p.id, p]));
+  return requests.map(r => ({
+    ...r,
+    user_profiles: profileMap.get(r.user_id) || null
+  }));
+}
+
+export async function updateParticipationRequestStatus(requestId, status) {
+  const { data, error } = await supabase
+    .from('participation_requests')
+    .update({ status })
+    .eq('id', requestId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function resetParticipationConsent(requestId) {
+  const { data, error } = await supabase
+    .from('participation_requests')
+    .update({ consent_acknowledged_at: null })
+    .eq('id', requestId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Participant consent helpers
+ */
+
+export async function acknowledgeConsent(requestId) {
+  const { data, error } = await supabase
+    .from('participation_requests')
+    .update({ consent_acknowledged_at: new Date().toISOString() })
+    .eq('id', requestId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function getMyParticipationForStudy(studyId) {
+  const user = await getCurrentUser();
+  if (!user) return null;
+
+  const { data, error } = await supabase
+    .from('participation_requests')
+    .select('*')
+    .eq('study_id', studyId)
+    .eq('user_id', user.id)
+    .single();
+
+  if (error && error.code !== 'PGRST116') throw error; // PGRST116 = no rows
+  return data;
+}
+
+/**
  * Researcher helpers
  */
 

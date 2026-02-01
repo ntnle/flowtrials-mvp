@@ -17,7 +17,10 @@
     deleteStudy,
     uploadStudyMedia,
     deleteStudyMedia,
-    getPublicMediaUrl
+    getPublicMediaUrl,
+    getStudyParticipationRequests,
+    updateParticipationRequestStatus,
+    resetParticipationConsent
   } from '$lib/supabase';
 
   let activeTab = 'requests'; // 'requests', 'studies', or 'info'
@@ -31,6 +34,11 @@
   let userStudies = [];
   let showCreateForm = false;
   let editingStudyId = null;
+
+  // Participation management state (researcher view)
+  let selectedStudyForRequests = null;
+  let studyParticipationRequests = [];
+  let loadingRequests = false;
   let profile = {
     age: '',
     gender: '',
@@ -376,6 +384,69 @@
       alert('Failed to delete file. Please try again.');
     }
   }
+
+  // Researcher participation management functions
+  async function loadStudyRequests(study) {
+    selectedStudyForRequests = study;
+    loadingRequests = true;
+    try {
+      studyParticipationRequests = await getStudyParticipationRequests(study.id);
+    } catch (err) {
+      console.error('Error loading participation requests:', err);
+      studyParticipationRequests = [];
+    } finally {
+      loadingRequests = false;
+    }
+  }
+
+  function closeRequestsView() {
+    selectedStudyForRequests = null;
+    studyParticipationRequests = [];
+  }
+
+  async function handleApproveRequest(requestId) {
+    if (!confirm('Approve this participation request?')) return;
+    try {
+      await updateParticipationRequestStatus(requestId, 'approved');
+      studyParticipationRequests = await getStudyParticipationRequests(selectedStudyForRequests.id);
+    } catch (err) {
+      console.error('Error approving request:', err);
+      alert('Failed to approve request. Please try again.');
+    }
+  }
+
+  async function handleRejectRequest(requestId) {
+    if (!confirm('Reject this participation request?')) return;
+    try {
+      await updateParticipationRequestStatus(requestId, 'rejected');
+      studyParticipationRequests = await getStudyParticipationRequests(selectedStudyForRequests.id);
+    } catch (err) {
+      console.error('Error rejecting request:', err);
+      alert('Failed to reject request. Please try again.');
+    }
+  }
+
+  async function handleResetConsent(requestId) {
+    if (!confirm('Reset consent acknowledgment for this participant? They will need to re-acknowledge consent.')) return;
+    try {
+      await resetParticipationConsent(requestId);
+      studyParticipationRequests = await getStudyParticipationRequests(selectedStudyForRequests.id);
+    } catch (err) {
+      console.error('Error resetting consent:', err);
+      alert('Failed to reset consent. Please try again.');
+    }
+  }
+
+  function getRequestStatusColor(status) {
+    switch (status) {
+      case 'pending': return 'bg-yellow-100 text-yellow-800';
+      case 'approved': return 'bg-green-100 text-green-800';
+      case 'rejected': return 'bg-red-100 text-red-800';
+      case 'withdrawn': return 'bg-gray-100 text-gray-800';
+      case 'contacted': return 'bg-blue-100 text-blue-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  }
 </script>
 
 <main class="min-h-screen bg-background p-6">
@@ -666,6 +737,100 @@
                   <p class="text-sm text-muted-foreground">Click "Create New Study" above to get started.</p>
                 </CardContent>
               </Card>
+            {:else if selectedStudyForRequests}
+              <!-- Participation Requests View -->
+              <Card>
+                <CardHeader>
+                  <div class="flex justify-between items-start">
+                    <div>
+                      <button
+                        on:click={closeRequestsView}
+                        class="text-sm text-muted-foreground hover:text-foreground mb-2 flex items-center gap-1"
+                      >← Back to Studies</button>
+                      <CardTitle class="text-lg">Participation Requests</CardTitle>
+                      <p class="text-sm text-muted-foreground mt-1">{selectedStudyForRequests.title}</p>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {#if loadingRequests}
+                    <p class="text-muted-foreground text-center py-4">Loading requests...</p>
+                  {:else if studyParticipationRequests.length === 0}
+                    <p class="text-muted-foreground text-center py-4">No participation requests yet.</p>
+                  {:else}
+                    <div class="space-y-3">
+                      {#each studyParticipationRequests as req}
+                        <div class="border border-border rounded-md p-4">
+                          <div class="flex justify-between items-start mb-3">
+                            <div>
+                              <div class="flex items-center gap-2 mb-1">
+                                <span class="px-2 py-0.5 rounded text-xs font-medium {getRequestStatusColor(req.status)}">
+                                  {req.status}
+                                </span>
+                                {#if req.consent_acknowledged_at}
+                                  <span class="px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                                    Consent ✓
+                                  </span>
+                                {:else}
+                                  <span class="px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
+                                    No Consent
+                                  </span>
+                                {/if}
+                              </div>
+                              <p class="text-xs text-muted-foreground">
+                                Requested: {new Date(req.created_at).toLocaleDateString()}
+                                {#if req.consent_acknowledged_at}
+                                  · Consent: {new Date(req.consent_acknowledged_at).toLocaleDateString()}
+                                {/if}
+                              </p>
+                            </div>
+                          </div>
+
+                          <!-- Participant info -->
+                          {#if req.user_profiles}
+                            <div class="text-sm text-muted-foreground mb-2">
+                              <span class="font-medium text-foreground">Participant:</span>
+                              {#if req.user_profiles.age}Age {req.user_profiles.age}{/if}
+                              {#if req.user_profiles.gender}· {req.user_profiles.gender}{/if}
+                              {#if req.user_profiles.zip_code}· ZIP {req.user_profiles.zip_code}{/if}
+                            </div>
+                            {#if req.user_profiles.conditions && req.user_profiles.conditions.length > 0}
+                              <div class="text-xs text-muted-foreground mb-2">
+                                Conditions: {req.user_profiles.conditions.join(', ')}
+                              </div>
+                            {/if}
+                          {/if}
+
+                          {#if req.notes}
+                            <div class="text-sm bg-muted/50 p-2 rounded mb-3">
+                              <span class="font-medium">Note:</span> {req.notes}
+                            </div>
+                          {/if}
+
+                          <div class="flex gap-2 flex-wrap">
+                            {#if req.status === 'pending'}
+                              <button
+                                on:click={() => handleApproveRequest(req.id)}
+                                class="px-3 py-1 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700"
+                              >Approve</button>
+                              <button
+                                on:click={() => handleRejectRequest(req.id)}
+                                class="px-3 py-1 bg-red-600 text-white rounded text-xs font-medium hover:bg-red-700"
+                              >Reject</button>
+                            {/if}
+                            {#if req.consent_acknowledged_at}
+                              <button
+                                on:click={() => handleResetConsent(req.id)}
+                                class="px-3 py-1 border border-input rounded text-xs hover:bg-accent"
+                              >Reset Consent</button>
+                            {/if}
+                          </div>
+                        </div>
+                      {/each}
+                    </div>
+                  {/if}
+                </CardContent>
+              </Card>
             {:else}
               {#each userStudies as study}
                 <Card>
@@ -702,7 +867,11 @@
                           <p>Conditions: {study.conditions.slice(0, 3).join(', ')}{study.conditions.length > 3 ? '...' : ''}</p>
                         {/if}
                       </div>
-                      <div class="flex gap-2">
+                      <div class="flex gap-2 flex-wrap">
+                        <button
+                          on:click={() => loadStudyRequests(study)}
+                          class="px-3 py-1 border border-primary text-primary rounded-md text-sm hover:bg-primary/10"
+                        >Requests</button>
                         <button
                           on:click={() => goto(`/study/${study.id}`)}
                           class="px-3 py-1 border border-input rounded-md text-sm hover:bg-accent"
