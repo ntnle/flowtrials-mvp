@@ -32,7 +32,7 @@ uvicorn main:app --reload --port 8000
 ### Frontend (Svelte)
 
 ```bash
-cd frontend
+cd frontend-sv
 pnpm install
 cp .env.example .env
 pnpm dev
