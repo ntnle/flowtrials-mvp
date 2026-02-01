@@ -390,3 +390,56 @@ export function onAuthStateChange(callback) {
 
   return subscription;
 }
+
+/**
+ * Task submission helpers
+ */
+
+export async function submitTaskResponse(studyId, taskId, responses) {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('Must be logged in to submit task');
+
+  const { data, error } = await supabase
+    .from('task_submissions')
+    .insert({
+      study_id: studyId,
+      task_id: taskId,
+      user_id: user.id,
+      responses
+    })
+    .select()
+    .single();
+
+  if (error) {
+    if (error.code === '23505') {
+      throw new Error('You have already submitted this task');
+    }
+    throw error;
+  }
+  return data;
+}
+
+export async function getMyTaskSubmissions(studyId) {
+  const user = await getCurrentUser();
+  if (!user) return [];
+
+  const { data, error } = await supabase
+    .from('task_submissions')
+    .select('*')
+    .eq('study_id', studyId)
+    .eq('user_id', user.id);
+
+  if (error) throw error;
+  return data || [];
+}
+
+export async function getTaskSubmissionsForStudy(studyId) {
+  const { data, error } = await supabase
+    .from('task_submissions')
+    .select('*')
+    .eq('study_id', studyId)
+    .order('submitted_at', { ascending: false });
+
+  if (error) throw error;
+  return data || [];
+}

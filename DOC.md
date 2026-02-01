@@ -39,10 +39,13 @@ Clinical trial discovery and participation platform where users search studies, 
 - ✓ Participant gating: must be approved AND consent-acknowledged to access tasks
 - ✓ Researcher can reset consent if consent documents change
 
-### Phase 2: Task Framework (Surveys First)
-- Tasks stored on `studies.tasks` as JSON (pages + blocks)
-- Survey tasks with text and question blocks (no branching)
-- Final submit confirmation per task (no auto-submit)
+### Phase 2: Task Framework (Surveys First) ✓ COMPLETED
+- ✓ Tasks stored on `studies.tasks` JSONB (pages + blocks)
+- ✓ Survey tasks with text and question blocks (no branching)
+- ✓ Final submit confirmation per task (no auto-submit)
+- ✓ Task submissions stored in `task_submissions` table
+- ✓ Researcher task editor (Profile → Edit Study → Tasks section)
+- ✓ Participant task list and survey runner (/study/:id/tasks)
 
 ### Phase 3: Audio Tasks (Later)
 - Audio recording task type with attempts and review status
@@ -292,6 +295,7 @@ Clinical trial records (from CT.gov ingestion + researcher-created).
 - `locations` (jsonb): Study sites with lat/lon
 - `contacts` (jsonb): Researcher contact info
 - `media` (jsonb): `[{"path": "...", "caption": "..."}]` - supplemental files
+- `tasks` (jsonb): `[{"id", "type", "title", "pages": [{"id", "title", "blocks": [...]}]}]` - survey tasks
 - `created_by` (uuid): FK to auth.users (NULL for CT.gov studies)
 - `is_published` (boolean): Draft vs public (default TRUE for CT.gov, FALSE for researcher)
 - `ai_plain_title`, `ai_plain_summary`, `ai_eligibility_quiz` (text/jsonb): Cached AI outputs
@@ -342,6 +346,22 @@ Manual researcher access (supplements .edu auto-detection).
 
 **Usage:**
 - `is_researcher()` function checks `.edu` domain OR allowlist membership
+
+#### `task_submissions`
+Participant survey responses for study tasks.
+
+**Key Fields:**
+- `id` (bigserial): PK
+- `study_id` (bigint): FK to studies
+- `task_id` (text): Matches task.id in studies.tasks JSONB
+- `user_id` (uuid): FK to auth.users
+- `responses` (jsonb): Survey responses keyed by block ID
+- `submitted_at` (timestamptz): When submitted
+- `UNIQUE(study_id, task_id, user_id)`: Single submission per user per task
+
+**RLS:**
+- Users can SELECT/INSERT own submissions
+- Study owners can SELECT all submissions for their studies
 
 ### Storage Buckets
 
@@ -761,6 +781,8 @@ Edit study → "Media (Supplemental Materials)" section:
 **Symptom:** "new row violates row-level security policy".
 **Cause:** Missing permission check in RLS `WITH CHECK` clause.
 **Fix:** Verify policy conditions match insert data (e.g., `created_by = auth.uid()`).
+
+### a common pitfall is forgetting to update the fastapi after making database / ui schema changes
 
 ---
 

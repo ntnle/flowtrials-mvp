@@ -20,7 +20,8 @@
     getPublicMediaUrl,
     getStudyParticipationRequests,
     updateParticipationRequestStatus,
-    resetParticipationConsent
+    resetParticipationConsent,
+    getTaskSubmissionsForStudy
   } from '$lib/supabase';
 
   let activeTab = 'requests'; // 'requests', 'studies', or 'info'
@@ -39,6 +40,12 @@
   let selectedStudyForRequests = null;
   let studyParticipationRequests = [];
   let loadingRequests = false;
+
+  // Task submissions state (researcher view)
+  let selectedStudyForSubmissions = null;
+  let studyTaskSubmissions = [];
+  let loadingSubmissions = false;
+  let expandedSubmissionId = null;
   let profile = {
     age: '',
     gender: '',
@@ -85,8 +92,13 @@
     locations: [],
     contacts: [],
     site_zips: [],
-    media: []
+    media: [],
+    tasks: []
   };
+
+  // Task editor state
+  let editingTaskIndex = null;
+  let editingPageIndex = null;
 
   onMount(async () => {
     if (!$user) {
@@ -197,9 +209,12 @@
       locations: [],
       contacts: [],
       site_zips: [],
-      media: []
+      media: [],
+      tasks: []
     };
     editingStudyId = null;
+    editingTaskIndex = null;
+    editingPageIndex = null;
   }
 
   function startEditStudy(study) {
@@ -216,9 +231,12 @@
       locations: study.locations || [],
       contacts: study.contacts || [],
       site_zips: study.site_zips || [],
-      media: study.media || []
+      media: study.media || [],
+      tasks: study.tasks || []
     };
     editingStudyId = study.id;
+    editingTaskIndex = null;
+    editingPageIndex = null;
     showCreateForm = true;
   }
 
@@ -305,6 +323,125 @@
 
   function removeZipFromStudy(index) {
     studyForm.site_zips = studyForm.site_zips.filter((_, i) => i !== index);
+  }
+
+  // Task management functions
+  function generateId() {
+    return crypto.randomUUID();
+  }
+
+  function addTask() {
+    const newTask = {
+      id: generateId(),
+      type: 'survey',
+      title: 'New Survey',
+      pages: [{
+        id: generateId(),
+        title: 'Page 1',
+        blocks: []
+      }]
+    };
+    studyForm.tasks = [...studyForm.tasks, newTask];
+    editingTaskIndex = studyForm.tasks.length - 1;
+    editingPageIndex = 0;
+  }
+
+  function removeTask(index) {
+    if (!confirm('Delete this task? This cannot be undone.')) return;
+    studyForm.tasks = studyForm.tasks.filter((_, i) => i !== index);
+    if (editingTaskIndex === index) {
+      editingTaskIndex = null;
+      editingPageIndex = null;
+    }
+  }
+
+  function addPage(taskIndex) {
+    const newPage = {
+      id: generateId(),
+      title: `Page ${studyForm.tasks[taskIndex].pages.length + 1}`,
+      blocks: []
+    };
+    studyForm.tasks[taskIndex].pages = [...studyForm.tasks[taskIndex].pages, newPage];
+    studyForm.tasks = studyForm.tasks; // trigger reactivity
+    editingPageIndex = studyForm.tasks[taskIndex].pages.length - 1;
+  }
+
+  function removePage(taskIndex, pageIndex) {
+    if (studyForm.tasks[taskIndex].pages.length <= 1) {
+      alert('A task must have at least one page');
+      return;
+    }
+    if (!confirm('Delete this page? This cannot be undone.')) return;
+    studyForm.tasks[taskIndex].pages = studyForm.tasks[taskIndex].pages.filter((_, i) => i !== pageIndex);
+    studyForm.tasks = studyForm.tasks;
+    if (editingPageIndex >= studyForm.tasks[taskIndex].pages.length) {
+      editingPageIndex = studyForm.tasks[taskIndex].pages.length - 1;
+    }
+  }
+
+  function addBlock(taskIndex, pageIndex, blockType) {
+    const baseBlock = {
+      id: generateId(),
+      type: blockType
+    };
+
+    let newBlock;
+    switch (blockType) {
+      case 'text':
+        newBlock = { ...baseBlock, content: 'Enter text here...' };
+        break;
+      case 'short_text':
+        newBlock = { ...baseBlock, label: 'Question', required: false };
+        break;
+      case 'long_text':
+        newBlock = { ...baseBlock, label: 'Question', required: false };
+        break;
+      case 'multiple_choice':
+        newBlock = { ...baseBlock, label: 'Question', options: ['Option 1', 'Option 2'], required: false };
+        break;
+      case 'checkbox':
+        newBlock = { ...baseBlock, label: 'Question', options: ['Option 1', 'Option 2'], required: false };
+        break;
+      case 'number':
+        newBlock = { ...baseBlock, label: 'Question', required: false };
+        break;
+      default:
+        newBlock = baseBlock;
+    }
+
+    studyForm.tasks[taskIndex].pages[pageIndex].blocks = [
+      ...studyForm.tasks[taskIndex].pages[pageIndex].blocks,
+      newBlock
+    ];
+    studyForm.tasks = studyForm.tasks;
+  }
+
+  function removeBlock(taskIndex, pageIndex, blockIndex) {
+    studyForm.tasks[taskIndex].pages[pageIndex].blocks =
+      studyForm.tasks[taskIndex].pages[pageIndex].blocks.filter((_, i) => i !== blockIndex);
+    studyForm.tasks = studyForm.tasks;
+  }
+
+  function updateBlock(taskIndex, pageIndex, blockIndex, field, value) {
+    studyForm.tasks[taskIndex].pages[pageIndex].blocks[blockIndex][field] = value;
+    studyForm.tasks = studyForm.tasks;
+  }
+
+  function addOptionToBlock(taskIndex, pageIndex, blockIndex) {
+    const block = studyForm.tasks[taskIndex].pages[pageIndex].blocks[blockIndex];
+    block.options = [...(block.options || []), `Option ${(block.options?.length || 0) + 1}`];
+    studyForm.tasks = studyForm.tasks;
+  }
+
+  function removeOptionFromBlock(taskIndex, pageIndex, blockIndex, optionIndex) {
+    const block = studyForm.tasks[taskIndex].pages[pageIndex].blocks[blockIndex];
+    block.options = block.options.filter((_, i) => i !== optionIndex);
+    studyForm.tasks = studyForm.tasks;
+  }
+
+  function updateOption(taskIndex, pageIndex, blockIndex, optionIndex, value) {
+    studyForm.tasks[taskIndex].pages[pageIndex].blocks[blockIndex].options[optionIndex] = value;
+    studyForm.tasks = studyForm.tasks;
   }
 
   async function handleMediaFileSelect(event) {
@@ -446,6 +583,48 @@
       case 'contacted': return 'bg-blue-100 text-blue-800';
       default: return 'bg-gray-100 text-gray-800';
     }
+  }
+
+  // Task submissions functions (researcher view)
+  async function loadStudySubmissions(study) {
+    selectedStudyForSubmissions = study;
+    loadingSubmissions = true;
+    expandedSubmissionId = null;
+    try {
+      studyTaskSubmissions = await getTaskSubmissionsForStudy(study.id);
+    } catch (err) {
+      console.error('Error loading task submissions:', err);
+      studyTaskSubmissions = [];
+    } finally {
+      loadingSubmissions = false;
+    }
+  }
+
+  function closeSubmissionsView() {
+    selectedStudyForSubmissions = null;
+    studyTaskSubmissions = [];
+    expandedSubmissionId = null;
+  }
+
+  function toggleSubmissionExpand(submissionId) {
+    expandedSubmissionId = expandedSubmissionId === submissionId ? null : submissionId;
+  }
+
+  function getTaskTitle(taskId) {
+    if (!selectedStudyForSubmissions?.tasks) return taskId;
+    const task = selectedStudyForSubmissions.tasks.find(t => t.id === taskId);
+    return task?.title || taskId;
+  }
+
+  function getBlockLabel(taskId, blockId) {
+    if (!selectedStudyForSubmissions?.tasks) return blockId;
+    const task = selectedStudyForSubmissions.tasks.find(t => t.id === taskId);
+    if (!task) return blockId;
+    for (const page of task.pages || []) {
+      const block = page.blocks?.find(b => b.id === blockId);
+      if (block) return block.label || block.content || blockId;
+    }
+    return blockId;
   }
 </script>
 
@@ -709,6 +888,182 @@
                   {/if}
                 </div>
 
+                <!-- Tasks Section (only for editing existing studies) -->
+                {#if editingStudyId}
+                  <div class="space-y-4 pt-4 border-t border-border">
+                    <div class="flex justify-between items-center">
+                      <label class="text-sm font-medium">Study Tasks (Surveys)</label>
+                      <button
+                        type="button"
+                        on:click={addTask}
+                        class="text-sm px-3 py-1 border border-primary text-primary rounded-md hover:bg-primary/10"
+                      >+ Add Survey Task</button>
+                    </div>
+
+                    {#if studyForm.tasks.length === 0}
+                      <p class="text-xs text-muted-foreground bg-muted/50 p-3 rounded">
+                        No tasks yet. Add a survey task for participants to complete after consent.
+                      </p>
+                    {:else}
+                      <div class="space-y-3">
+                        {#each studyForm.tasks as task, taskIndex}
+                          <div class="border border-border rounded-md p-3 bg-muted/20">
+                            <div class="flex justify-between items-start mb-2">
+                              <div class="flex-1 mr-2">
+                                <input
+                                  type="text"
+                                  bind:value={task.title}
+                                  placeholder="Task title"
+                                  class="w-full px-2 py-1 text-sm font-medium border border-input rounded bg-background"
+                                />
+                              </div>
+                              <div class="flex gap-1">
+                                <button
+                                  type="button"
+                                  on:click={() => { editingTaskIndex = editingTaskIndex === taskIndex ? null : taskIndex; editingPageIndex = 0; }}
+                                  class="px-2 py-1 text-xs border rounded {editingTaskIndex === taskIndex ? 'bg-primary text-primary-foreground' : 'hover:bg-accent'}"
+                                >{editingTaskIndex === taskIndex ? 'Close' : 'Edit'}</button>
+                                <button
+                                  type="button"
+                                  on:click={() => removeTask(taskIndex)}
+                                  class="px-2 py-1 text-xs border border-destructive text-destructive rounded hover:bg-destructive/10"
+                                >Delete</button>
+                              </div>
+                            </div>
+
+                            <div class="text-xs text-muted-foreground">
+                              {task.pages?.length || 0} page(s), {task.pages?.reduce((sum, p) => sum + (p.blocks?.length || 0), 0) || 0} block(s)
+                            </div>
+
+                            <!-- Expanded task editor -->
+                            {#if editingTaskIndex === taskIndex}
+                              <div class="mt-3 pt-3 border-t border-border space-y-3">
+                                <!-- Page tabs -->
+                                <div class="flex gap-1 flex-wrap items-center">
+                                  {#each task.pages as page, pageIndex}
+                                    <button
+                                      type="button"
+                                      on:click={() => editingPageIndex = pageIndex}
+                                      class="px-2 py-1 text-xs rounded {editingPageIndex === pageIndex ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'}"
+                                    >{page.title || `Page ${pageIndex + 1}`}</button>
+                                  {/each}
+                                  <button
+                                    type="button"
+                                    on:click={() => addPage(taskIndex)}
+                                    class="px-2 py-1 text-xs border border-dashed border-primary text-primary rounded hover:bg-primary/10"
+                                  >+ Page</button>
+                                </div>
+
+                                <!-- Current page editor -->
+                                {#if editingPageIndex !== null && task.pages[editingPageIndex]}
+                                  <div class="space-y-2 p-2 bg-background rounded border border-border">
+                                    <div class="flex justify-between items-center">
+                                      <input
+                                        type="text"
+                                        bind:value={task.pages[editingPageIndex].title}
+                                        placeholder="Page title"
+                                        class="px-2 py-1 text-xs border border-input rounded bg-background w-40"
+                                      />
+                                      <button
+                                        type="button"
+                                        on:click={() => removePage(taskIndex, editingPageIndex)}
+                                        class="text-xs text-destructive hover:underline"
+                                      >Remove Page</button>
+                                    </div>
+
+                                    <!-- Blocks -->
+                                    <div class="space-y-2">
+                                      {#each task.pages[editingPageIndex].blocks as block, blockIndex}
+                                        <div class="p-2 border border-border rounded bg-muted/30">
+                                          <div class="flex justify-between items-start mb-2">
+                                            <span class="text-xs font-medium text-muted-foreground uppercase">{block.type}</span>
+                                            <button
+                                              type="button"
+                                              on:click={() => removeBlock(taskIndex, editingPageIndex, blockIndex)}
+                                              class="text-xs text-destructive hover:underline"
+                                            >Remove</button>
+                                          </div>
+
+                                          {#if block.type === 'text'}
+                                            <textarea
+                                              value={block.content}
+                                              on:input={(e) => updateBlock(taskIndex, editingPageIndex, blockIndex, 'content', e.target.value)}
+                                              placeholder="Text content..."
+                                              rows="2"
+                                              class="w-full px-2 py-1 text-xs border border-input rounded bg-background"
+                                            ></textarea>
+                                          {:else}
+                                            <input
+                                              type="text"
+                                              value={block.label}
+                                              on:input={(e) => updateBlock(taskIndex, editingPageIndex, blockIndex, 'label', e.target.value)}
+                                              placeholder="Question label"
+                                              class="w-full px-2 py-1 text-xs border border-input rounded bg-background mb-1"
+                                            />
+                                            <label class="flex items-center gap-1 text-xs mb-1">
+                                              <input
+                                                type="checkbox"
+                                                checked={block.required}
+                                                on:change={(e) => updateBlock(taskIndex, editingPageIndex, blockIndex, 'required', e.target.checked)}
+                                              />
+                                              Required
+                                            </label>
+
+                                            {#if block.type === 'multiple_choice' || block.type === 'checkbox'}
+                                              <div class="space-y-1 mt-2">
+                                                <span class="text-xs text-muted-foreground">Options:</span>
+                                                {#each block.options || [] as option, optIndex}
+                                                  <div class="flex gap-1">
+                                                    <input
+                                                      type="text"
+                                                      value={option}
+                                                      on:input={(e) => updateOption(taskIndex, editingPageIndex, blockIndex, optIndex, e.target.value)}
+                                                      class="flex-1 px-2 py-1 text-xs border border-input rounded bg-background"
+                                                    />
+                                                    <button
+                                                      type="button"
+                                                      on:click={() => removeOptionFromBlock(taskIndex, editingPageIndex, blockIndex, optIndex)}
+                                                      class="text-xs text-destructive px-1"
+                                                    >×</button>
+                                                  </div>
+                                                {/each}
+                                                <button
+                                                  type="button"
+                                                  on:click={() => addOptionToBlock(taskIndex, editingPageIndex, blockIndex)}
+                                                  class="text-xs text-primary hover:underline"
+                                                >+ Add Option</button>
+                                              </div>
+                                            {/if}
+                                          {/if}
+                                        </div>
+                                      {/each}
+                                    </div>
+
+                                    <!-- Add block buttons -->
+                                    <div class="flex flex-wrap gap-1 pt-2">
+                                      <span class="text-xs text-muted-foreground mr-1">Add:</span>
+                                      <button type="button" on:click={() => addBlock(taskIndex, editingPageIndex, 'text')} class="px-2 py-0.5 text-xs border rounded hover:bg-accent">Text</button>
+                                      <button type="button" on:click={() => addBlock(taskIndex, editingPageIndex, 'short_text')} class="px-2 py-0.5 text-xs border rounded hover:bg-accent">Short Answer</button>
+                                      <button type="button" on:click={() => addBlock(taskIndex, editingPageIndex, 'long_text')} class="px-2 py-0.5 text-xs border rounded hover:bg-accent">Long Answer</button>
+                                      <button type="button" on:click={() => addBlock(taskIndex, editingPageIndex, 'multiple_choice')} class="px-2 py-0.5 text-xs border rounded hover:bg-accent">Multiple Choice</button>
+                                      <button type="button" on:click={() => addBlock(taskIndex, editingPageIndex, 'checkbox')} class="px-2 py-0.5 text-xs border rounded hover:bg-accent">Checkboxes</button>
+                                      <button type="button" on:click={() => addBlock(taskIndex, editingPageIndex, 'number')} class="px-2 py-0.5 text-xs border rounded hover:bg-accent">Number</button>
+                                    </div>
+                                  </div>
+                                {/if}
+                              </div>
+                            {/if}
+                          </div>
+                        {/each}
+                      </div>
+                    {/if}
+                  </div>
+                {:else}
+                  <p class="text-xs text-muted-foreground bg-muted/50 p-3 rounded border border-border">
+                    Save the study first to add tasks.
+                  </p>
+                {/if}
+
                 <div class="flex gap-3 justify-end pt-4">
                   <button
                     on:click={() => { showCreateForm = false; resetStudyForm(); }}
@@ -831,6 +1186,83 @@
                   {/if}
                 </CardContent>
               </Card>
+            {:else if selectedStudyForSubmissions}
+              <!-- Task Submissions View -->
+              <Card>
+                <CardHeader>
+                  <div class="flex justify-between items-start">
+                    <div>
+                      <button
+                        on:click={closeSubmissionsView}
+                        class="text-sm text-muted-foreground hover:text-foreground mb-2 flex items-center gap-1"
+                      >← Back to Studies</button>
+                      <CardTitle class="text-lg">Task Submissions</CardTitle>
+                      <p class="text-sm text-muted-foreground mt-1">{selectedStudyForSubmissions.title}</p>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {#if loadingSubmissions}
+                    <p class="text-muted-foreground text-center py-4">Loading submissions...</p>
+                  {:else if studyTaskSubmissions.length === 0}
+                    <p class="text-muted-foreground text-center py-4">No task submissions yet.</p>
+                  {:else}
+                    <div class="space-y-3">
+                      {#each studyTaskSubmissions as submission}
+                        <div class="border border-border rounded-md p-4">
+                          <div class="flex justify-between items-start mb-2">
+                            <div>
+                              <div class="flex items-center gap-2 mb-1">
+                                <span class="font-medium text-sm">{getTaskTitle(submission.task_id)}</span>
+                              </div>
+                              <p class="text-xs text-muted-foreground">
+                                Submitted: {new Date(submission.submitted_at).toLocaleString()}
+                              </p>
+                              <p class="text-xs text-muted-foreground">
+                                Participant ID: {submission.user_id.slice(0, 8)}...
+                              </p>
+                            </div>
+                            <button
+                              on:click={() => toggleSubmissionExpand(submission.id)}
+                              class="px-3 py-1 text-xs border rounded hover:bg-accent"
+                            >{expandedSubmissionId === submission.id ? 'Hide' : 'View'} Responses</button>
+                          </div>
+
+                          {#if expandedSubmissionId === submission.id}
+                            <div class="mt-3 pt-3 border-t border-border space-y-2">
+                              {#if submission.responses && typeof submission.responses === 'object'}
+                                {#each Object.entries(submission.responses) as [blockId, response]}
+                                  <div class="bg-muted/30 p-2 rounded">
+                                    <p class="text-xs font-medium text-muted-foreground mb-1">
+                                      {getBlockLabel(submission.task_id, blockId)}
+                                    </p>
+                                    <p class="text-sm">
+                                      {#if Array.isArray(response)}
+                                        {response.join(', ')}
+                                      {:else}
+                                        {response}
+                                      {/if}
+                                    </p>
+                                  </div>
+                                {/each}
+                              {:else}
+                                <p class="text-sm text-muted-foreground">No response data</p>
+                              {/if}
+                            </div>
+                          {/if}
+                        </div>
+                      {/each}
+                    </div>
+
+                    <!-- Summary -->
+                    <div class="mt-4 pt-4 border-t border-border">
+                      <p class="text-sm text-muted-foreground">
+                        Total submissions: {studyTaskSubmissions.length}
+                      </p>
+                    </div>
+                  {/if}
+                </CardContent>
+              </Card>
             {:else}
               {#each userStudies as study}
                 <Card>
@@ -872,6 +1304,10 @@
                           on:click={() => loadStudyRequests(study)}
                           class="px-3 py-1 border border-primary text-primary rounded-md text-sm hover:bg-primary/10"
                         >Requests</button>
+                        <button
+                          on:click={() => loadStudySubmissions(study)}
+                          class="px-3 py-1 border border-primary text-primary rounded-md text-sm hover:bg-primary/10"
+                        >Submissions</button>
                         <button
                           on:click={() => goto(`/study/${study.id}`)}
                           class="px-3 py-1 border border-input rounded-md text-sm hover:bg-accent"

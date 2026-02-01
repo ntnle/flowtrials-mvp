@@ -121,6 +121,7 @@ class Study(BaseModel):
     ai_eligibility_quiz: Optional[List[EligibilityQuizQuestion]] = None
     ai_cache_version: Optional[str] = None
     ai_cached_at: Optional[str] = None
+    tasks: List[dict] = Field(default_factory=list)
 
 
 class SearchRequest(BaseModel):
@@ -530,7 +531,8 @@ def _row_to_study(row: dict) -> Study:
         ai_plain_summary=row.get("ai_plain_summary"),
         ai_eligibility_quiz=ai_quiz,
         ai_cache_version=row.get("ai_cache_version"),
-        ai_cached_at=row.get("ai_cached_at").isoformat() if row.get("ai_cached_at") else None
+        ai_cached_at=row.get("ai_cached_at").isoformat() if row.get("ai_cached_at") else None,
+        tasks=row.get("tasks") or []
     )
 
 

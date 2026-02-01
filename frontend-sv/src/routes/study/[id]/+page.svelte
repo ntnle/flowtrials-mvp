@@ -1073,9 +1073,12 @@
                   <p class="text-sm text-green-700 dark:text-green-300 mb-3">
                     Consent acknowledged on {new Date(myParticipation.consent_acknowledged_at).toLocaleDateString()}. You can now access study tasks.
                   </p>
-                  <div class="p-3 bg-muted rounded-md text-center">
-                    <p class="text-sm text-muted-foreground">Study tasks coming soon.</p>
-                  </div>
+                  <button
+                    on:click={() => goto(`/study/${studyId}/tasks`)}
+                    class="w-full px-4 py-3 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90"
+                  >
+                    View Study Tasks
+                  </button>
                 {/if}
               {:else if myParticipation.status === 'rejected'}
                 <p class="text-sm text-muted-foreground">Unfortunately, your request was not approved for this study.</p>
