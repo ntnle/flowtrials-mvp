@@ -1,7 +1,7 @@
 <script>
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
-  import { getStudyByIdSupabase, getMyParticipationForStudy, getMyTaskSubmissions, submitTaskResponse } from '$lib/supabase.js';
+  import { getStudyByIdSupabase, getMyParticipationForStudy, getMyTaskSubmissions, submitTaskResponse, uploadAudioRecording } from '$lib/supabase.js';
   import { getStudyById } from '$lib/api.js';
   import { user } from '$lib/authStore';
   import { Card, CardHeader, CardTitle, CardContent } from '$lib/components/ui/card/index.js';
@@ -24,6 +24,13 @@
   let showConfirmModal = false;
   let submitting = false;
   let submitError = '';
+
+  // Audio recording state
+  let recordingBlockId = null;
+  let mediaRecorder = null;
+  let audioChunks = [];
+  let recordingTimer = 0;
+  let recordingInterval = null;
 
   let loadedKey = null;
   $: {
@@ -103,6 +110,9 @@
       if (block.required && block.type === 'checkbox' && (!responses[block.id] || responses[block.id].length === 0)) {
         return false;
       }
+      if (block.required && block.type === 'audio_recording' && !responses[block.id]) {
+        return false;
+      }
     }
     return true;
   }
@@ -156,6 +166,68 @@
       responses[blockId] = current.filter(o => o !== option);
     }
     responses = responses; // trigger reactivity
+  }
+
+  // Audio recording functions
+  async function startRecording(blockId) {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      audioChunks = [];
+      recordingBlockId = blockId;
+      recordingTimer = 0;
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunks.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+
+        // Upload audio and store metadata
+        try {
+          const metadata = await uploadAudioRecording(parseInt(studyId), myParticipation.id, audioBlob);
+          responses[blockId] = metadata;
+          responses = responses; // trigger reactivity
+        } catch (err) {
+          console.error('Upload error:', err);
+          alert('Failed to upload recording. Please try again.');
+        }
+
+        // Stop all tracks
+        stream.getTracks().forEach(track => track.stop());
+        recordingBlockId = null;
+        if (recordingInterval) {
+          clearInterval(recordingInterval);
+          recordingInterval = null;
+        }
+      };
+
+      mediaRecorder.start();
+
+      // Update timer every second
+      recordingInterval = setInterval(() => {
+        recordingTimer++;
+      }, 1000);
+
+    } catch (err) {
+      console.error('Microphone access error:', err);
+      alert('Could not access microphone. Please check your browser permissions.');
+    }
+  }
+
+  function stopRecording() {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.stop();
+    }
+  }
+
+  function formatTime(seconds) {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   }
 </script>
 
@@ -301,6 +373,68 @@
                     {/each}
                   </div>
                 </fieldset>
+              {:else if block.type === 'audio_recording'}
+                <div>
+                  <span class="text-sm font-medium block mb-2">
+                    {block.label}
+                    {#if block.required}<span class="text-destructive">*</span>{/if}
+                  </span>
+
+                  {#if recordingBlockId === block.id}
+                    <!-- Recording in progress -->
+                    <div class="p-4 border-2 border-destructive rounded-md bg-destructive/5">
+                      <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2">
+                          <div class="w-3 h-3 bg-destructive rounded-full animate-pulse"></div>
+                          <span class="text-sm font-medium">Recording...</span>
+                        </div>
+                        <span class="text-sm font-mono">{formatTime(recordingTimer)}</span>
+                      </div>
+                      <button
+                        on:click={stopRecording}
+                        class="w-full px-4 py-2 bg-destructive text-destructive-foreground rounded-md text-sm font-medium hover:opacity-90"
+                      >
+                        Stop Recording
+                      </button>
+                    </div>
+                  {:else if responses[block.id]}
+                    <!-- Recording completed -->
+                    <div class="p-4 border border-border rounded-md bg-muted/30">
+                      <div class="flex items-center gap-2 mb-2">
+                        <svg class="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        <span class="text-sm font-medium">Recording uploaded</span>
+                      </div>
+                      <p class="text-xs text-muted-foreground mb-3">
+                        Uploaded at {new Date(responses[block.id].uploadedAt).toLocaleString()}
+                      </p>
+                      <button
+                        on:click={() => startRecording(block.id)}
+                        class="px-4 py-2 border border-input rounded-md text-sm hover:bg-accent"
+                      >
+                        Re-record
+                      </button>
+                    </div>
+                  {:else}
+                    <!-- Not recorded yet -->
+                    <div class="p-4 border border-dashed border-input rounded-md">
+                      <p class="text-sm text-muted-foreground mb-3">
+                        Click the button below to start recording your response.
+                      </p>
+                      <button
+                        on:click={() => startRecording(block.id)}
+                        class="w-full px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 flex items-center justify-center gap-2"
+                      >
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+                          <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+                        </svg>
+                        Start Recording
+                      </button>
+                    </div>
+                  {/if}
+                </div>
               {/if}
             </div>
           {/each}

@@ -378,6 +378,56 @@ export function getPublicMediaUrl(path) {
 }
 
 /**
+ * Audio Recording helpers
+ */
+
+export async function uploadAudioRecording(studyId, participationRequestId, audioBlob) {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('Must be logged in to upload audio');
+
+  // Generate unique filename with timestamp
+  const timestamp = Date.now();
+  const filename = `${timestamp}.webm`;
+  const path = `${studyId}/${participationRequestId}/${filename}`;
+
+  // Upload to storage
+  const { data, error } = await supabase.storage
+    .from('study-recordings')
+    .upload(path, audioBlob, {
+      contentType: 'audio/webm',
+      cacheControl: '3600',
+      upsert: false
+    });
+
+  if (error) throw error;
+
+  // Return metadata about the recording
+  return {
+    path: data.path,
+    size: audioBlob.size,
+    mimeType: audioBlob.type,
+    uploadedAt: new Date().toISOString()
+  };
+}
+
+export async function getAudioRecordingUrl(path) {
+  const { data, error } = await supabase.storage
+    .from('study-recordings')
+    .createSignedUrl(path, 3600); // 1 hour expiry
+
+  if (error) throw error;
+  return data.signedUrl;
+}
+
+export async function deleteAudioRecording(path) {
+  const { error } = await supabase.storage
+    .from('study-recordings')
+    .remove([path]);
+
+  if (error) throw error;
+}
+
+/**
  * Auth state listener
  */
 

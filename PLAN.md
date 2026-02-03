@@ -1,26 +1,25 @@
 Goal
-- Define and implement the MVP task framework for studies (surveys only), stored on the study object, with participant task flow and final submit confirmation.
+- Add a first-pass audio recording block type to the survey/task framework, with storage, RLS, and UI to record + submit audio.
 
 Non-Goals
-- Implement audio recording tasks or storage.
-- Add branching/skip logic, randomization, or advanced survey features.
-- Add new FastAPI endpoints or backend modules.
+- Transcription, waveform rendering, or analytics.
+- Advanced retry workflows or branching logic.
+- FastAPI endpoints for audio.
 
 Acceptance Criteria
-- `studies` has a `tasks` JSONB field used as the source of truth for survey tasks.
-- Researchers can create/edit/reorder survey tasks (pages + blocks) in the study editor UI.
-- Participants can view a task list and complete a survey task with a final submit confirmation.
-- Survey responses are stored per task submission (single JSON blob keyed by block IDs).
-- Docs reflect the task framework and MVP scope.
+- Task schema supports `type: "audio_recording"` blocks.
+- Participants can record and upload audio for those blocks in the survey UI.
+- Audio files are stored in a private `study-recordings` bucket with RLS.
+- Audio responses are stored in `study_task_responses.response_json`.
 
 Atomic TODOs (Doer Checklist)
-1) Add a new migration in `supabase/migrations/` to add `tasks` JSONB to `studies` (default empty array).
-2) Update `frontend-sv/src/lib/supabase.js` study helpers to read/write the `tasks` field.
-3) Extend the researcher study editor in `frontend-sv/src/routes/profile/+page.svelte` to add/edit/reorder tasks, pages, and blocks for `type: "survey"`.
-4) Add participant task list view in `frontend-sv/src/routes/study/[id]/tasks/+page.svelte` (only show when approved + consent acknowledged).
-5) Add survey task runner in `frontend-sv/src/routes/study/[id]/tasks/[taskId]/+page.svelte` with page navigation, required validation, and final submit confirmation.
-6) Store survey responses in the task responses table as JSON keyed by block IDs (no analytics or derived fields).
-7) Update `DOC.md`, `HANDOFF.md`, and `STUDY_TASK_FRAMEWORK.md` to reflect the survey task framework and MVP limits.
+1) Add a storage migration to create `study-recordings` bucket (private, 50MB, audio MIME types).
+2) Add storage RLS policies for upload/select/delete based on study ownership and participation approval.
+3) Update task schema docs in `STUDY_TASK_FRAMEWORK.md` to include `audio_recording` block shape and response shape.
+4) Extend the survey renderer in `frontend-sv/src/routes/study/[id]/tasks/[taskId]/+page.svelte` to support `audio_recording` blocks.
+5) Add recording/upload helpers in `frontend-sv/src/lib/supabase.js` (upload audio and return path + metadata).
+6) Update response saving to store audio response object inside `response_json` for that block.
+7) Update `DOC.md` and `HANDOFF.md` to mention audio block support (MVP).
 
 Open Questions / Blockers
-- Confirm whether survey responses should allow multiple attempts immediately or be single-submit for MVP.
+- Confirm storage path format for recordings (recommended: `{study_id}/{participation_request_id}/{response_id}.webm`).

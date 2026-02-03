@@ -4,6 +4,53 @@
 
 **Phase 1: Participation Management** - COMPLETED
 **Phase 2: Task Framework (Surveys)** - COMPLETED
+**Phase 3: Audio Recording Blocks** - COMPLETED
+
+---
+
+## Phase 3: Audio Recording Blocks
+
+### What's New
+
+1. **Storage Migration** (`supabase/migrations/20260201000002_add_audio_storage.sql`)
+   - Created `study-recordings` private bucket (50MB limit, audio MIME types)
+   - RLS policies for participants to upload/view/delete their own recordings
+   - RLS policies for study owners to view/delete all recordings for their studies
+   - Path format: `{study_id}/{participation_request_id}/{timestamp}.webm`
+
+2. **Supabase Client Helpers** (`frontend-sv/src/lib/supabase.js`)
+   - `uploadAudioRecording(studyId, participationRequestId, audioBlob)` - Upload audio with metadata
+   - `getAudioRecordingUrl(path)` - Get signed URL (1 hour expiry)
+   - `deleteAudioRecording(path)` - Delete audio file
+
+3. **Survey Renderer** (`frontend-sv/src/routes/study/[id]/tasks/[taskId]/+page.svelte`)
+   - Audio recording UI with microphone access
+   - Start/Stop recording with timer display
+   - Automatic upload on stop
+   - Re-record functionality
+   - Required field validation for audio blocks
+
+4. **Task Editor** (`frontend-sv/src/routes/profile/+page.svelte`)
+   - Added "Audio Recording" block type to task editor
+   - Audio blocks have `label` and `required` fields
+
+### Audio Response Storage
+
+Audio recordings are stored in two places:
+1. **File storage**: `study-recordings` bucket (actual audio file)
+2. **Response metadata**: Stored in `task_submissions.responses` JSONB
+
+Example response object:
+```json
+{
+  "block-id-123": {
+    "path": "456/789/1738425600000.webm",
+    "size": 45678,
+    "mimeType": "audio/webm",
+    "uploadedAt": "2026-02-01T12:00:00.000Z"
+  }
+}
+```
 
 ---
 
@@ -26,7 +73,7 @@
    - Task management section in study editor (Edit → Tasks)
    - Add/remove survey tasks
    - Add/remove pages within tasks
-   - Add/remove question blocks (text, short_text, long_text, multiple_choice, checkbox, number)
+   - Add/remove question blocks (text, short_text, long_text, multiple_choice, checkbox, number, audio_recording)
    - Edit block labels, required flag, and options
 
 4. **Participant Task Flow**
@@ -66,6 +113,17 @@
 | `number` | Numeric input | `label`, `required` |
 | `multiple_choice` | Radio buttons (single select) | `label`, `required`, `options[]` |
 | `checkbox` | Checkboxes (multi-select) | `label`, `required`, `options[]` |
+| `audio_recording` | Audio recording capture | `label`, `required` |
+
+**Audio Recording Block Response Format:**
+```json
+{
+  "path": "123/456/1738425600000.webm",
+  "size": 45678,
+  "mimeType": "audio/webm",
+  "uploadedAt": "2026-02-01T12:00:00.000Z"
+}
+```
 
 ---
 

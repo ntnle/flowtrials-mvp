@@ -21,7 +21,8 @@
     getStudyParticipationRequests,
     updateParticipationRequestStatus,
     resetParticipationConsent,
-    getTaskSubmissionsForStudy
+    getTaskSubmissionsForStudy,
+    getAudioRecordingUrl
   } from '$lib/supabase';
 
   let activeTab = 'requests'; // 'requests', 'studies', or 'info'
@@ -46,6 +47,7 @@
   let studyTaskSubmissions = [];
   let loadingSubmissions = false;
   let expandedSubmissionId = null;
+  let audioUrls = {}; // Cache for audio signed URLs
   let profile = {
     age: '',
     gender: '',
@@ -405,6 +407,9 @@
       case 'number':
         newBlock = { ...baseBlock, label: 'Question', required: false };
         break;
+      case 'audio_recording':
+        newBlock = { ...baseBlock, label: 'Record your response', required: false };
+        break;
       default:
         newBlock = baseBlock;
     }
@@ -625,6 +630,30 @@
       if (block) return block.label || block.content || blockId;
     }
     return blockId;
+  }
+
+  function getBlockType(taskId, blockId) {
+    if (!selectedStudyForSubmissions?.tasks) return null;
+    const task = selectedStudyForSubmissions.tasks.find(t => t.id === taskId);
+    if (!task) return null;
+    for (const page of task.pages || []) {
+      const block = page.blocks?.find(b => b.id === blockId);
+      if (block) return block.type;
+    }
+    return null;
+  }
+
+  async function loadAudioUrl(path) {
+    if (audioUrls[path]) return audioUrls[path];
+    try {
+      const url = await getAudioRecordingUrl(path);
+      audioUrls[path] = url;
+      audioUrls = audioUrls; // trigger reactivity
+      return url;
+    } catch (err) {
+      console.error('Error loading audio URL:', err);
+      return null;
+    }
   }
 </script>
 
@@ -1048,6 +1077,7 @@
                                       <button type="button" on:click={() => addBlock(taskIndex, editingPageIndex, 'multiple_choice')} class="px-2 py-0.5 text-xs border rounded hover:bg-accent">Multiple Choice</button>
                                       <button type="button" on:click={() => addBlock(taskIndex, editingPageIndex, 'checkbox')} class="px-2 py-0.5 text-xs border rounded hover:bg-accent">Checkboxes</button>
                                       <button type="button" on:click={() => addBlock(taskIndex, editingPageIndex, 'number')} class="px-2 py-0.5 text-xs border rounded hover:bg-accent">Number</button>
+                                      <button type="button" on:click={() => addBlock(taskIndex, editingPageIndex, 'audio_recording')} class="px-2 py-0.5 text-xs border rounded hover:bg-accent">Audio Recording</button>
                                     </div>
                                   </div>
                                 {/if}
@@ -1236,13 +1266,37 @@
                                     <p class="text-xs font-medium text-muted-foreground mb-1">
                                       {getBlockLabel(submission.task_id, blockId)}
                                     </p>
-                                    <p class="text-sm">
-                                      {#if Array.isArray(response)}
-                                        {response.join(', ')}
-                                      {:else}
-                                        {response}
-                                      {/if}
-                                    </p>
+                                    {#if getBlockType(submission.task_id, blockId) === 'audio_recording' && response?.path}
+                                      <!-- Audio recording response -->
+                                      <div class="space-y-2">
+                                        {#await loadAudioUrl(response.path)}
+                                          <p class="text-xs text-muted-foreground">Loading audio...</p>
+                                        {:then audioUrl}
+                                          {#if audioUrl}
+                                            <audio controls class="w-full max-w-sm">
+                                              <source src={audioUrl} type={response.mimeType || 'audio/webm'} />
+                                              Your browser does not support audio playback.
+                                            </audio>
+                                            <p class="text-xs text-muted-foreground">
+                                              Uploaded: {new Date(response.uploadedAt).toLocaleString()} · {Math.round(response.size / 1024)}KB
+                                            </p>
+                                          {:else}
+                                            <p class="text-xs text-destructive">Failed to load audio</p>
+                                          {/if}
+                                        {/await}
+                                      </div>
+                                    {:else}
+                                      <!-- Regular text response -->
+                                      <p class="text-sm">
+                                        {#if Array.isArray(response)}
+                                          {response.join(', ')}
+                                        {:else if typeof response === 'object'}
+                                          {JSON.stringify(response)}
+                                        {:else}
+                                          {response}
+                                        {/if}
+                                      </p>
+                                    {/if}
                                   </div>
                                 {/each}
                               {:else}
