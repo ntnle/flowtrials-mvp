@@ -1,7 +1,7 @@
 <script>
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
-  import { getStudyByIdSupabase, getMyParticipationForStudy, getMyTaskSubmissions, submitTaskResponse, uploadAudioRecording } from '$lib/supabase.js';
+  import { getStudyByIdSupabase, getMyParticipationForStudy, getMyTaskSubmissions, submitTaskResponse, uploadAudioRecording, getTaskMediaUrl } from '$lib/supabase.js';
   import { getStudyById } from '$lib/api.js';
   import { user } from '$lib/authStore';
   import { Card, CardHeader, CardTitle, CardContent } from '$lib/components/ui/card/index.js';
@@ -433,6 +433,66 @@
                         Start Recording
                       </button>
                     </div>
+                  {/if}
+                </div>
+              {:else if block.type === 'media'}
+                <!-- Media block (images and PDFs) -->
+                <div class="space-y-3">
+                  {#if block.items && block.items.length > 0}
+                    {#each block.items as item}
+                      <div class="border border-border rounded-md overflow-hidden">
+                        {#if item.kind === 'image'}
+                          {#await getTaskMediaUrl(item.path)}
+                            <div class="p-4 text-sm text-muted-foreground">Loading image...</div>
+                          {:then imageUrl}
+                            {#if imageUrl}
+                              <img
+                                src={imageUrl}
+                                alt={item.caption || 'Task media'}
+                                class="w-full h-auto"
+                              />
+                              {#if item.caption}
+                                <div class="p-2 bg-muted/30 text-sm text-muted-foreground">
+                                  {item.caption}
+                                </div>
+                              {/if}
+                            {:else}
+                              <div class="p-4 text-sm text-destructive">Failed to load image</div>
+                            {/if}
+                          {/await}
+                        {:else if item.kind === 'pdf'}
+                          <div class="p-4 flex items-center gap-3">
+                            <svg class="w-8 h-8 text-muted-foreground" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"/>
+                            </svg>
+                            <div class="flex-1">
+                              <p class="text-sm font-medium">{item.path.split('/').pop()}</p>
+                              {#if item.caption}
+                                <p class="text-xs text-muted-foreground">{item.caption}</p>
+                              {/if}
+                            </div>
+                            {#await getTaskMediaUrl(item.path)}
+                              <span class="text-xs text-muted-foreground">Loading...</span>
+                            {:then pdfUrl}
+                              {#if pdfUrl}
+                                <a
+                                  href={pdfUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  class="px-3 py-1 bg-primary text-primary-foreground rounded text-xs font-medium hover:opacity-90"
+                                >
+                                  View PDF
+                                </a>
+                              {:else}
+                                <span class="text-xs text-destructive">Failed to load</span>
+                              {/if}
+                            {/await}
+                          </div>
+                        {/if}
+                      </div>
+                    {/each}
+                  {:else}
+                    <p class="text-sm text-muted-foreground">No media items</p>
                   {/if}
                 </div>
               {/if}

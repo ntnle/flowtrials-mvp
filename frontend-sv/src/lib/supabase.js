@@ -428,6 +428,56 @@ export async function deleteAudioRecording(path) {
 }
 
 /**
+ * Task Media helpers
+ */
+
+export async function uploadTaskMedia(studyId, taskId, file) {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('Must be logged in to upload task media');
+
+  // Generate unique filename
+  const timestamp = Date.now();
+  const sanitizedName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+  const filename = `${timestamp}_${sanitizedName}`;
+  const path = `${studyId}/${taskId}/${filename}`;
+
+  // Upload to storage
+  const { data, error } = await supabase.storage
+    .from('task-media')
+    .upload(path, file, {
+      cacheControl: '3600',
+      upsert: false
+    });
+
+  if (error) throw error;
+
+  // Return metadata
+  return {
+    path: data.path,
+    kind: file.type.startsWith('image/') ? 'image' : 'pdf',
+    mimeType: file.type,
+    size: file.size
+  };
+}
+
+export async function getTaskMediaUrl(path) {
+  const { data, error } = await supabase.storage
+    .from('task-media')
+    .createSignedUrl(path, 3600); // 1 hour expiry
+
+  if (error) throw error;
+  return data.signedUrl;
+}
+
+export async function deleteTaskMedia(path) {
+  const { error } = await supabase.storage
+    .from('task-media')
+    .remove([path]);
+
+  if (error) throw error;
+}
+
+/**
  * Auth state listener
  */
 

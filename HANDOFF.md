@@ -5,6 +5,54 @@
 **Phase 1: Participation Management** - COMPLETED
 **Phase 2: Task Framework (Surveys)** - COMPLETED
 **Phase 3: Audio Recording Blocks** - COMPLETED
+**Phase 4: Task Media Blocks** - COMPLETED
+
+---
+
+## Phase 4: Task Media Blocks
+
+### What's New
+
+1. **Storage Migration** (`supabase/migrations/20260201000003_add_task_media_storage.sql`)
+   - Created `task-media` private bucket (10MB limit, images + PDFs)
+   - RLS policies for study owners to upload/view/update/delete task media
+   - RLS policies for approved participants with consent to view task media
+   - Path format: `{study_id}/{task_id}/{timestamp}_{filename}`
+
+2. **Supabase Client Helpers** (`frontend-sv/src/lib/supabase.js`)
+   - `uploadTaskMedia(studyId, taskId, file)` - Upload image/PDF with metadata
+   - `getTaskMediaUrl(path)` - Get signed URL (1 hour expiry)
+   - `deleteTaskMedia(path)` - Delete media file
+
+3. **Task Editor** (`frontend-sv/src/routes/profile/+page.svelte`)
+   - Added "Media" block type to task editor
+   - Upload interface for images (JPEG, PNG, WebP, GIF, SVG) and PDFs
+   - Media items list with delete functionality
+   - Optional captions for each media item
+
+4. **Survey Renderer** (`frontend-sv/src/routes/study/[id]/tasks/[taskId]/+page.svelte`)
+   - Media block display with image preview
+   - PDF items shown with download link
+   - Captions displayed when provided
+   - Gated by approval + consent (RLS enforced)
+
+### Media Block Structure
+
+Media blocks store items (not responses):
+```json
+{
+  "type": "media",
+  "items": [
+    {
+      "path": "123/task-456/1738425600000_image.jpg",
+      "kind": "image",
+      "mimeType": "image/jpeg",
+      "size": 234567,
+      "caption": "Optional caption"
+    }
+  ]
+}
+```
 
 ---
 
@@ -73,8 +121,9 @@ Example response object:
    - Task management section in study editor (Edit → Tasks)
    - Add/remove survey tasks
    - Add/remove pages within tasks
-   - Add/remove question blocks (text, short_text, long_text, multiple_choice, checkbox, number, audio_recording)
+   - Add/remove question blocks (text, short_text, long_text, multiple_choice, checkbox, number, audio_recording, media)
    - Edit block labels, required flag, and options
+   - Upload media items (images/PDFs) for media blocks
 
 4. **Participant Task Flow**
    - Task list page (`/study/:id/tasks`) - Shows all tasks with completion status
@@ -114,6 +163,7 @@ Example response object:
 | `multiple_choice` | Radio buttons (single select) | `label`, `required`, `options[]` |
 | `checkbox` | Checkboxes (multi-select) | `label`, `required`, `options[]` |
 | `audio_recording` | Audio recording capture | `label`, `required` |
+| `media` | Images and PDFs display | `items[]` (path, kind, caption) |
 
 **Audio Recording Block Response Format:**
 ```json
@@ -122,6 +172,21 @@ Example response object:
   "size": 45678,
   "mimeType": "audio/webm",
   "uploadedAt": "2026-02-01T12:00:00.000Z"
+}
+```
+
+**Media Block Structure (not a response):**
+```json
+{
+  "items": [
+    {
+      "path": "123/task-456/1738425600000_image.jpg",
+      "kind": "image",
+      "mimeType": "image/jpeg",
+      "size": 234567,
+      "caption": "Optional caption"
+    }
+  ]
 }
 ```
 

@@ -22,7 +22,9 @@
     updateParticipationRequestStatus,
     resetParticipationConsent,
     getTaskSubmissionsForStudy,
-    getAudioRecordingUrl
+    getAudioRecordingUrl,
+    uploadTaskMedia,
+    deleteTaskMedia
   } from '$lib/supabase';
 
   let activeTab = 'requests'; // 'requests', 'studies', or 'info'
@@ -410,6 +412,9 @@
       case 'audio_recording':
         newBlock = { ...baseBlock, label: 'Record your response', required: false };
         break;
+      case 'media':
+        newBlock = { ...baseBlock, items: [] };
+        break;
       default:
         newBlock = baseBlock;
     }
@@ -447,6 +452,77 @@
   function updateOption(taskIndex, pageIndex, blockIndex, optionIndex, value) {
     studyForm.tasks[taskIndex].pages[pageIndex].blocks[blockIndex].options[optionIndex] = value;
     studyForm.tasks = studyForm.tasks;
+  }
+
+  // Task media block functions
+  async function handleTaskMediaUpload(taskIndex, pageIndex, blockIndex, event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml', 'application/pdf'];
+    if (!allowedTypes.includes(file.type)) {
+      alert('Only images (JPEG, PNG, WebP, GIF, SVG) and PDFs are allowed');
+      event.target.value = '';
+      return;
+    }
+
+    // Validate file size (10MB)
+    if (file.size > 10485760) {
+      alert('File size must be under 10MB');
+      event.target.value = '';
+      return;
+    }
+
+    if (!editingStudyId) {
+      alert('Please save the study first before uploading task media');
+      event.target.value = '';
+      return;
+    }
+
+    const task = studyForm.tasks[taskIndex];
+    if (!task.id) {
+      alert('Task must have an ID before uploading media');
+      event.target.value = '';
+      return;
+    }
+
+    try {
+      uploadingMedia = true;
+      const metadata = await uploadTaskMedia(editingStudyId, task.id, file);
+      const caption = prompt('Enter optional caption:') || '';
+
+      const block = studyForm.tasks[taskIndex].pages[pageIndex].blocks[blockIndex];
+      block.items = [...(block.items || []), { ...metadata, caption: caption.trim() }];
+      studyForm.tasks = studyForm.tasks;
+      event.target.value = '';
+    } catch (err) {
+      console.error('Upload error:', err);
+      alert('Failed to upload file: ' + err.message);
+    } finally {
+      uploadingMedia = false;
+      event.target.value = '';
+    }
+  }
+
+  async function removeTaskMediaItem(taskIndex, pageIndex, blockIndex, itemIndex) {
+    const block = studyForm.tasks[taskIndex].pages[pageIndex].blocks[blockIndex];
+    const item = block.items[itemIndex];
+
+    if (!confirm('Delete this media item? This cannot be undone.')) {
+      return;
+    }
+
+    try {
+      if (item.path) {
+        await deleteTaskMedia(item.path);
+      }
+      block.items = block.items.filter((_, i) => i !== itemIndex);
+      studyForm.tasks = studyForm.tasks;
+    } catch (err) {
+      console.error('Delete error:', err);
+      alert('Failed to delete media item');
+    }
   }
 
   async function handleMediaFileSelect(event) {
@@ -1021,6 +1097,38 @@
                                               rows="2"
                                               class="w-full px-2 py-1 text-xs border border-input rounded bg-background"
                                             ></textarea>
+                                          {:else if block.type === 'media'}
+                                            <!-- Media block editor -->
+                                            <div class="space-y-2">
+                                              <p class="text-xs text-muted-foreground">Images and PDFs shown to participants</p>
+                                              {#if block.items && block.items.length > 0}
+                                                <div class="space-y-1">
+                                                  {#each block.items as item, itemIndex}
+                                                    <div class="flex items-center gap-2 p-1 bg-background border rounded">
+                                                      <span class="text-xs flex-1 truncate">{item.path.split('/').pop()}</span>
+                                                      <span class="text-xs text-muted-foreground">{item.kind}</span>
+                                                      <button
+                                                        type="button"
+                                                        on:click={() => removeTaskMediaItem(taskIndex, editingPageIndex, blockIndex, itemIndex)}
+                                                        class="text-xs text-destructive px-1"
+                                                      >×</button>
+                                                    </div>
+                                                  {/each}
+                                                </div>
+                                              {/if}
+                                              <label class="cursor-pointer">
+                                                <input
+                                                  type="file"
+                                                  accept="image/jpeg,image/jpg,image/png,image/webp,image/gif,image/svg+xml,application/pdf"
+                                                  on:change={(e) => handleTaskMediaUpload(taskIndex, editingPageIndex, blockIndex, e)}
+                                                  disabled={uploadingMedia}
+                                                  class="hidden"
+                                                />
+                                                <span class="inline-block text-xs px-2 py-1 border rounded hover:bg-accent {uploadingMedia ? 'opacity-50 cursor-not-allowed' : ''}">
+                                                  {uploadingMedia ? 'Uploading...' : '+ Upload Image/PDF'}
+                                                </span>
+                                              </label>
+                                            </div>
                                           {:else}
                                             <input
                                               type="text"
@@ -1078,6 +1186,7 @@
                                       <button type="button" on:click={() => addBlock(taskIndex, editingPageIndex, 'checkbox')} class="px-2 py-0.5 text-xs border rounded hover:bg-accent">Checkboxes</button>
                                       <button type="button" on:click={() => addBlock(taskIndex, editingPageIndex, 'number')} class="px-2 py-0.5 text-xs border rounded hover:bg-accent">Number</button>
                                       <button type="button" on:click={() => addBlock(taskIndex, editingPageIndex, 'audio_recording')} class="px-2 py-0.5 text-xs border rounded hover:bg-accent">Audio Recording</button>
+                                      <button type="button" on:click={() => addBlock(taskIndex, editingPageIndex, 'media')} class="px-2 py-0.5 text-xs border rounded hover:bg-accent">Media</button>
                                     </div>
                                   </div>
                                 {/if}
