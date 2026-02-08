@@ -13,6 +13,15 @@ Design constraint: **writes are Supabase-first** so RLS remains the source of tr
 - FastAPI is **read-only for the frontend**: search, AI generation (cache-backed), and published reads.
 - Svelte routes are **monolithic**: keep state + handlers + UI in a single `+page.svelte` per route.
 
+## Routing & Layouts
+The frontend uses SvelteKit route groups to support a navbar-free focused experience while preserving URLs:
+- Root shell: `frontend-sv/src/routes/+layout.svelte` runs global concerns (notably auth initialization) and renders children.
+- App routes: `frontend-sv/src/routes/(app)/...` render with the global navbar via `frontend-sv/src/routes/(app)/+layout.svelte`.
+- Focus routes: `frontend-sv/src/routes/(focus)/...` render without a navbar via `frontend-sv/src/routes/(focus)/+layout.svelte`.
+
+Focused join entrypoint:
+- `/join/:studyId` is implemented at `frontend-sv/src/routes/(focus)/join/[studyId]/+page.svelte`.
+
 ## Where To Implement Changes
 - UI/UX, routing, forms: `frontend-sv/src/routes/**/+page.svelte`
 - Supabase access helpers: `frontend-sv/src/lib/supabase.js`
@@ -32,6 +41,8 @@ Design constraint: **writes are Supabase-first** so RLS remains the source of tr
 
 Postgres tables (selected):
 - `studies`: includes `tasks` JSON (task definitions, including media blocks) and cached AI fields
+  - `join_flow_key` (text): gates whether `/join/:studyId` is enabled for a published study
+  - `auto_approve_participation` (boolean): enables study-scoped auto-approval (enforced by RLS)
 - `participation_requests`: includes `status` and `consent_acknowledged_at` gating
 - `task_submissions`: one submission per user per task per study
   - survey answers + audio metadata stored in `task_submissions.responses` (JSONB)
@@ -48,6 +59,8 @@ Storage buckets:
 ## Security Model (RLS-First)
 - Browser clients use Supabase SDK; Postgres RLS and Storage bucket policies decide access.
 - Task access gating: must be `approved` and have `consent_acknowledged_at`.
+- Participation auto-approval must be study-scoped and enforced by RLS (participants must not be able to arbitrarily escalate status).
+- Storage uploads for `study-recordings` must require approved + consented (not merely approved).
 - Private media is accessed via signed URLs.
 
 FastAPI DB connectivity note: use the Supabase pooler host and include `?sslmode=require`.

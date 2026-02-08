@@ -50,6 +50,11 @@ Frontend env:
 
 ## Where To Make Changes
 - UI and page logic: `frontend-sv/src/routes/**/+page.svelte`
+- Focused join funnel (navbar-free): `frontend-sv/src/routes/(focus)/join/[studyId]/+page.svelte`
+- Route-group layouts:
+  - App (with navbar): `frontend-sv/src/routes/(app)/+layout.svelte`
+  - Focus (no navbar): `frontend-sv/src/routes/(focus)/+layout.svelte`
+  - Root shell (auth init): `frontend-sv/src/routes/+layout.svelte`
 - Supabase helper layer: `frontend-sv/src/lib/supabase.js`
 - FastAPI client wrapper: `frontend-sv/src/lib/api.js`
 - FastAPI implementation: `backend/search_module.py`, `backend/ai_module.py`
@@ -68,6 +73,11 @@ Frontend env:
 - If you add a new table or bucket, include:
   - RLS enablement and policies
   - any required indexes/constraints
+
+Join flow fields and constraints:
+- `studies.join_flow_key` gates whether `/join/:studyId` is enabled for a published study.
+- `studies.auto_approve_participation` controls study-scoped auto-approval and must be enforced by RLS on `participation_requests`.
+- `study-recordings` upload policies must require approved + consented.
 
 ## Scripts
 Run scripts from the repo root:

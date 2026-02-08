@@ -10,6 +10,7 @@ Primary user roles:
 Key product invariants (agents should preserve):
 - Task access is gated by participation status: must be **approved** and have **consent acknowledged** (`consent_acknowledged_at`).
 - Participation requests are per-user/per-study (enforced by a uniqueness constraint).
+- Auto-approval (when enabled) is **study-scoped** via `studies.auto_approve_participation` and must be enforced by RLS (no client-side trust).
 - Tasks live on the study as JSON (`studies.tasks`); submissions live in `task_submissions` (RLS-controlled).
 - AI outputs are **cache-backed** and should be treated as idempotent.
 
@@ -20,7 +21,8 @@ Canonical architecture context: [ARCHITECTURE.md](ARCHITECTURE.md).
 ### Participant
 1) Discover studies: browse/search and open study detail.
 2) Auth + profile: Supabase Auth; profile stored in `user_profiles`.
-3) Request participation: create a `participation_requests` row.
+3) Join (focused): for studies explicitly configured for join, visit `/join/:studyId` (navbar-free) and complete the inline steps.
+4) Request participation: create a `participation_requests` row.
 4) Consent gating: on approval, participant acknowledges consent (`consent_acknowledged_at`).
 5) Complete tasks:
    - Survey tasks
@@ -29,6 +31,7 @@ Canonical architecture context: [ARCHITECTURE.md](ARCHITECTURE.md).
 
 Primary routes:
 - `/browse`, `/study/:id`
+- `/join/:studyId` (focused join; available only for published studies with `studies.join_flow_key` set)
 - `/signup`, `/login`, `/profile`
 - `/study/:id/tasks`, `/study/:id/tasks/:taskId`
 
