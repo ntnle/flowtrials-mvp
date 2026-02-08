@@ -99,6 +99,8 @@ class Study(BaseModel):
     id: int
     source: str
     source_id: Optional[str] = None
+    join_flow_key: Optional[str] = None
+    auto_approve_participation: bool = False
     title: str
     brief_summary: Optional[str] = None
     detailed_description: Optional[str] = None
@@ -510,6 +512,8 @@ def _row_to_study(row: dict) -> Study:
         id=row["id"],
         source=row["source"],
         source_id=row["source_id"],
+        join_flow_key=row.get("join_flow_key"),
+        auto_approve_participation=bool(row.get("auto_approve_participation") or False),
         title=row["title"],
         brief_summary=row["brief_summary"],
         detailed_description=row["detailed_description"],
