@@ -1,7 +1,8 @@
 <script>
+  import { onDestroy } from 'svelte';
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
-  import { getStudyByIdSupabase, getMyParticipationForStudy, getMyTaskSubmissions, submitTaskResponse, uploadAudioRecording, getTaskMediaUrl } from '$lib/supabase.js';
+  import { getStudyByIdSupabase, getMyParticipationForStudy, getMyTaskSubmissions, submitTaskResponse, uploadAudioRecording, deleteAudioRecording, getTaskMediaUrl } from '$lib/supabase.js';
   import { getStudyById } from '$lib/api.js';
   import { user } from '$lib/authStore';
   import { Card, CardHeader, CardTitle, CardContent } from '$lib/components/ui/card/index.js';
@@ -24,13 +25,32 @@
   let showConfirmModal = false;
   let submitting = false;
   let submitError = '';
+  let showValidationHint = false;
 
   // Audio recording state
-  let recordingBlockId = null;
+  const MAX_RECORDING_SECONDS = 30;
+
+  /** @type {Record<string, string|null>} */
+  let audioPreviewUrlByBlockId = {};
+  /** @type {Record<string, 'idle'|'recording'|'uploading'|'saved'|'error'>} */
+  let audioStatusByBlockId = {};
+  /** @type {Record<string, string|null>} */
+  let audioErrorByBlockId = {};
+  /** @type {Record<string, Blob|null>} */
+  let audioBlobByBlockId = {};
+
+  /** @type {Record<string, string|null>} */
+  let pendingDeletePathByBlockId = {};
+
+  let activeRecordingBlockId = null;
+  let activeUploadingBlockId = null;
+
   let mediaRecorder = null;
+  let activeStream = null;
   let audioChunks = [];
   let recordingTimer = 0;
   let recordingInterval = null;
+  let stopInProgress = false;
 
   let loadedKey = null;
   $: {
@@ -104,24 +124,31 @@
     if (!currentPage) return true;
 
     for (const block of currentPage.blocks) {
-      if (block.required && !responses[block.id]) {
-        return false;
-      }
       if (block.required && block.type === 'checkbox' && (!responses[block.id] || responses[block.id].length === 0)) {
         return false;
       }
-      if (block.required && block.type === 'audio_recording' && !responses[block.id]) {
-        return false;
+      if (block.required && block.type === 'audio_recording') {
+        const status = audioStatusByBlockId[block.id] || (responses[block.id] ? 'saved' : 'idle');
+        if (!responses[block.id]) return false;
+        if (status === 'recording' || status === 'uploading') return false;
+        continue;
       }
+      if (block.required && !responses[block.id]) return false;
     }
     return true;
   }
 
   $: currentPageValid = validateCurrentPage();
 
+  $: isAudioBusyOnCurrentPage = Boolean(
+    currentPage?.blocks?.some(
+      (b) => b.type === 'audio_recording' && (audioStatusByBlockId[b.id] === 'recording' || audioStatusByBlockId[b.id] === 'uploading')
+    )
+  );
+
   function nextPage() {
     if (!currentPageValid) {
-      alert('Please complete all required fields before continuing.');
+      showValidationHint = true;
       return;
     }
     if (currentPageIndex < totalPages - 1) {
@@ -137,7 +164,7 @@
 
   function handleShowConfirm() {
     if (!currentPageValid) {
-      alert('Please complete all required fields before submitting.');
+      showValidationHint = true;
       return;
     }
     showConfirmModal = true;
@@ -168,13 +195,73 @@
     responses = responses; // trigger reactivity
   }
 
+  function revokePreviewUrl(blockId) {
+    const url = audioPreviewUrlByBlockId[blockId];
+    if (url) URL.revokeObjectURL(url);
+    audioPreviewUrlByBlockId = { ...audioPreviewUrlByBlockId, [blockId]: null };
+  }
+
+  function setAudioStatus(blockId, status) {
+    audioStatusByBlockId = { ...audioStatusByBlockId, [blockId]: status };
+  }
+
+  function setAudioError(blockId, message) {
+    audioErrorByBlockId = { ...audioErrorByBlockId, [blockId]: message };
+  }
+
+  async function uploadBlobForBlock(blockId, audioBlob) {
+    activeUploadingBlockId = blockId;
+    setAudioStatus(blockId, 'uploading');
+    setAudioError(blockId, null);
+
+    try {
+      const metadata = await uploadAudioRecording(parseInt(studyId), myParticipation.id, audioBlob);
+
+      const priorPathToDelete = pendingDeletePathByBlockId[blockId];
+      responses[blockId] = metadata;
+      responses = responses; // trigger reactivity
+      setAudioStatus(blockId, 'saved');
+
+      if (priorPathToDelete && priorPathToDelete !== metadata.path) {
+        try {
+          await deleteAudioRecording(priorPathToDelete);
+        } catch (err) {
+          // Best-effort delete; ignore failures.
+          console.warn('Failed to delete prior recording:', err);
+        }
+      }
+
+      pendingDeletePathByBlockId = { ...pendingDeletePathByBlockId, [blockId]: null };
+    } catch (err) {
+      console.error('Upload error:', err);
+
+      // Safer re-record behavior: if a previous recording exists, keep it as the valid saved response.
+      if (responses?.[blockId]) {
+        setAudioStatus(blockId, 'saved');
+        setAudioError(blockId, err?.message || 'Upload failed. Your previous recording is still saved.');
+      } else {
+        setAudioStatus(blockId, 'error');
+        setAudioError(blockId, err?.message || 'Failed to upload. You can retry or re-record.');
+      }
+    } finally {
+      activeUploadingBlockId = null;
+    }
+  }
+
   // Audio recording functions
   async function startRecording(blockId) {
     try {
+      if (activeRecordingBlockId || activeUploadingBlockId) return;
+
+      showValidationHint = false;
+      setAudioError(blockId, null);
+      setAudioStatus(blockId, 'recording');
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      activeStream = stream;
       mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
       audioChunks = [];
-      recordingBlockId = blockId;
+      activeRecordingBlockId = blockId;
       recordingTimer = 0;
 
       mediaRecorder.ondataavailable = (event) => {
@@ -185,43 +272,90 @@
 
       mediaRecorder.onstop = async () => {
         const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        audioBlobByBlockId = { ...audioBlobByBlockId, [blockId]: audioBlob };
 
-        // Upload audio and store metadata
-        try {
-          const metadata = await uploadAudioRecording(parseInt(studyId), myParticipation.id, audioBlob);
-          responses[blockId] = metadata;
-          responses = responses; // trigger reactivity
-        } catch (err) {
-          console.error('Upload error:', err);
-          alert('Failed to upload recording. Please try again.');
-        }
+        const existingPreview = audioPreviewUrlByBlockId[blockId];
+        if (existingPreview) URL.revokeObjectURL(existingPreview);
+        const previewUrl = URL.createObjectURL(audioBlob);
+        audioPreviewUrlByBlockId = { ...audioPreviewUrlByBlockId, [blockId]: previewUrl };
 
-        // Stop all tracks
-        stream.getTracks().forEach(track => track.stop());
-        recordingBlockId = null;
+        activeRecordingBlockId = null;
+
         if (recordingInterval) {
           clearInterval(recordingInterval);
           recordingInterval = null;
         }
+
+        await uploadBlobForBlock(blockId, audioBlob);
+
+        // Stop all tracks
+        stream.getTracks().forEach(track => track.stop());
+        activeStream = null;
+        mediaRecorder = null;
+        stopInProgress = false;
       };
 
       mediaRecorder.start();
 
       // Update timer every second
       recordingInterval = setInterval(() => {
-        recordingTimer++;
+        recordingTimer = Math.min(recordingTimer + 1, MAX_RECORDING_SECONDS);
+        if (recordingTimer >= MAX_RECORDING_SECONDS) {
+          stopRecording();
+        }
       }, 1000);
 
     } catch (err) {
       console.error('Microphone access error:', err);
-      alert('Could not access microphone. Please check your browser permissions.');
+      setAudioStatus(blockId, 'error');
+      setAudioError(blockId, 'Could not access your microphone. Check browser permissions and try again.');
+      activeRecordingBlockId = null;
     }
   }
 
   function stopRecording() {
-    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    if (stopInProgress) return;
+    if (!mediaRecorder) return;
+    if (mediaRecorder.state === 'inactive') return;
+
+    stopInProgress = true;
+    try {
+      if (recordingInterval) {
+        clearInterval(recordingInterval);
+        recordingInterval = null;
+      }
       mediaRecorder.stop();
+    } catch (err) {
+      console.error('Stop recording error:', err);
+      stopInProgress = false;
     }
+  }
+
+  async function handleRerecord(blockId) {
+    showValidationHint = false;
+
+    const existingPath = responses?.[blockId]?.path;
+    if (existingPath) {
+      pendingDeletePathByBlockId = { ...pendingDeletePathByBlockId, [blockId]: existingPath };
+    }
+
+    // Clear local preview + blob for the new attempt; keep the previous uploaded response until the new upload succeeds.
+    if (audioPreviewUrlByBlockId[blockId]) revokePreviewUrl(blockId);
+    audioBlobByBlockId = { ...audioBlobByBlockId, [blockId]: null };
+    setAudioError(blockId, null);
+
+    await startRecording(blockId);
+  }
+
+  async function handleRetryUpload(blockId) {
+    const audioBlob = audioBlobByBlockId[blockId];
+    if (!audioBlob) {
+      setAudioStatus(blockId, 'error');
+      setAudioError(blockId, 'Nothing to upload yet. Please record again.');
+      return;
+    }
+
+    await uploadBlobForBlock(blockId, audioBlob);
   }
 
   function formatTime(seconds) {
@@ -229,6 +363,34 @@
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   }
+
+  onDestroy(() => {
+    try {
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+      }
+    } catch {
+      // ignore
+    }
+
+    if (recordingInterval) {
+      clearInterval(recordingInterval);
+      recordingInterval = null;
+    }
+
+    if (activeStream) {
+      try {
+        activeStream.getTracks().forEach((t) => t.stop());
+      } catch {
+        // ignore
+      }
+      activeStream = null;
+    }
+
+    for (const url of Object.values(audioPreviewUrlByBlockId)) {
+      if (url) URL.revokeObjectURL(url);
+    }
+  });
 </script>
 
 <main class="min-h-screen bg-background p-6">
@@ -380,57 +542,107 @@
                     {#if block.required}<span class="text-destructive">*</span>{/if}
                   </span>
 
-                  {#if recordingBlockId === block.id}
-                    <!-- Recording in progress -->
+                  {#if showValidationHint && block.required && (!responses[block.id] || (audioStatusByBlockId[block.id] || (responses[block.id] ? 'saved' : 'idle')) !== 'saved')}
+                    <p class="text-xs text-destructive">This is required.</p>
+                  {/if}
+
+                  {#if (audioStatusByBlockId[block.id] || (responses[block.id] ? 'saved' : 'idle')) === 'recording' && activeRecordingBlockId === block.id}
+                    <!-- Recording -->
                     <div class="p-4 border-2 border-destructive rounded-md bg-destructive/5">
                       <div class="flex items-center justify-between mb-3">
                         <div class="flex items-center gap-2">
                           <div class="w-3 h-3 bg-destructive rounded-full animate-pulse"></div>
-                          <span class="text-sm font-medium">Recording...</span>
+                          <span class="text-sm font-medium">Recording</span>
                         </div>
-                        <span class="text-sm font-mono">{formatTime(recordingTimer)}</span>
+                        <span class="text-sm font-mono">{formatTime(recordingTimer)} / 0:30</span>
                       </div>
+                      <p class="text-xs text-muted-foreground mb-3">Max 30 seconds. Recording will stop automatically.</p>
                       <button
                         on:click={stopRecording}
                         class="w-full px-4 py-2 bg-destructive text-destructive-foreground rounded-md text-sm font-medium hover:opacity-90"
                       >
-                        Stop Recording
+                        Stop recording
                       </button>
                     </div>
-                  {:else if responses[block.id]}
-                    <!-- Recording completed -->
+                  {:else if (audioStatusByBlockId[block.id] || (responses[block.id] ? 'saved' : 'idle')) === 'uploading'}
+                    <!-- Uploading -->
                     <div class="p-4 border border-border rounded-md bg-muted/30">
-                      <div class="flex items-center gap-2 mb-2">
-                        <svg class="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                        </svg>
-                        <span class="text-sm font-medium">Recording uploaded</span>
+                      <div class="flex items-center justify-between">
+                        <span class="text-sm font-medium">Uploading…</span>
+                        <span class="text-xs text-muted-foreground">Please don’t navigate away</span>
                       </div>
-                      <p class="text-xs text-muted-foreground mb-3">
-                        Uploaded at {new Date(responses[block.id].uploadedAt).toLocaleString()}
-                      </p>
+                    </div>
+                  {:else if (audioStatusByBlockId[block.id] || (responses[block.id] ? 'saved' : 'idle')) === 'saved' && responses[block.id]}
+                    <!-- Saved -->
+                    <div class="p-4 border border-border rounded-md bg-muted/30 space-y-3">
+                      <div class="flex items-center justify-between">
+                        <span class="text-sm font-medium">Saved</span>
+                        <span class="text-xs text-muted-foreground">
+                          Uploaded {new Date(responses[block.id].uploadedAt).toLocaleString()}
+                        </span>
+                      </div>
+
+                      {#if audioErrorByBlockId[block.id]}
+                        <p class="text-sm text-destructive">{audioErrorByBlockId[block.id]}</p>
+                      {/if}
+
+                      {#if audioPreviewUrlByBlockId[block.id]}
+                        <audio controls src={audioPreviewUrlByBlockId[block.id]} class="w-full"></audio>
+                      {/if}
+
                       <button
-                        on:click={() => startRecording(block.id)}
-                        class="px-4 py-2 border border-input rounded-md text-sm hover:bg-accent"
+                        on:click={() => handleRerecord(block.id)}
+                        disabled={isAudioBusyOnCurrentPage}
+                        class="px-4 py-2 border border-input rounded-md text-sm hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Re-record
                       </button>
                     </div>
+                  {:else if (audioStatusByBlockId[block.id] || (responses[block.id] ? 'saved' : 'idle')) === 'error'}
+                    <!-- Error -->
+                    <div class="p-4 border border-destructive rounded-md bg-destructive/5 space-y-3">
+                      <div class="text-sm font-medium text-destructive">Error</div>
+                      {#if audioErrorByBlockId[block.id]}
+                        <p class="text-sm text-destructive">{audioErrorByBlockId[block.id]}</p>
+                      {/if}
+
+                      {#if audioPreviewUrlByBlockId[block.id]}
+                        <audio controls src={audioPreviewUrlByBlockId[block.id]} class="w-full"></audio>
+                      {/if}
+
+                      <div class="flex gap-2">
+                        <button
+                          on:click={() => handleRetryUpload(block.id)}
+                          disabled={isAudioBusyOnCurrentPage}
+                          class="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Retry upload
+                        </button>
+                        <button
+                          on:click={() => handleRerecord(block.id)}
+                          disabled={isAudioBusyOnCurrentPage}
+                          class="px-4 py-2 border border-input rounded-md text-sm hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Re-record
+                        </button>
+                      </div>
+                    </div>
                   {:else}
-                    <!-- Not recorded yet -->
+                    <!-- Idle -->
                     <div class="p-4 border border-dashed border-input rounded-md">
                       <p class="text-sm text-muted-foreground mb-3">
-                        Click the button below to start recording your response.
+                        Record a single high-quality clip. You can listen back and re-record before submitting.
                       </p>
                       <button
                         on:click={() => startRecording(block.id)}
-                        class="w-full px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 flex items-center justify-center gap-2"
+                        disabled={isAudioBusyOnCurrentPage}
+                        class="w-full px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                           <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
                           <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
                         </svg>
-                        Start Recording
+                        Start recording
                       </button>
                     </div>
                   {/if}
@@ -505,7 +717,7 @@
       <div class="flex justify-between items-center">
         <button
           on:click={prevPage}
-          disabled={isFirstPage}
+          disabled={isFirstPage || isAudioBusyOnCurrentPage}
           class="px-4 py-2 border border-input rounded-md text-sm font-medium hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed"
         >
           ← Previous
@@ -514,17 +726,26 @@
         <div class="flex gap-1">
           {#each Array(totalPages) as _, i}
             <button
-              on:click={() => { if (i < currentPageIndex || currentPageValid) currentPageIndex = i; }}
-              class="w-2 h-2 rounded-full {i === currentPageIndex ? 'bg-primary' : i < currentPageIndex ? 'bg-primary/50' : 'bg-muted'}"
+              disabled={isAudioBusyOnCurrentPage}
+              on:click={() => {
+                if (isAudioBusyOnCurrentPage) return;
+                if (i < currentPageIndex || currentPageValid) currentPageIndex = i;
+                else showValidationHint = true;
+              }}
+              class="w-2 h-2 rounded-full {i === currentPageIndex ? 'bg-primary' : i < currentPageIndex ? 'bg-primary/50' : 'bg-muted'} disabled:opacity-50 disabled:cursor-not-allowed"
               aria-label={`Go to page ${i + 1}`}
             ></button>
           {/each}
         </div>
 
+        {#if showValidationHint && !currentPageValid}
+          <p class="text-xs text-destructive">Complete required fields to continue.</p>
+        {/if}
+
         {#if isLastPage}
           <button
             on:click={handleShowConfirm}
-            disabled={!currentPageValid}
+            disabled={!currentPageValid || isAudioBusyOnCurrentPage}
             class="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Submit
@@ -532,7 +753,7 @@
         {:else}
           <button
             on:click={nextPage}
-            disabled={!currentPageValid}
+            disabled={!currentPageValid || isAudioBusyOnCurrentPage}
             class="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Next →
@@ -562,14 +783,16 @@
     >
       <Card class="max-w-md w-full bg-card text-card-foreground border border-border shadow-2xl">
         <CardHeader>
-          <CardTitle>Submit Survey?</CardTitle>
+          <CardTitle>{study?.join_flow_key === 'slp-2026' ? 'Submit final recordings?' : 'Submit responses?'}</CardTitle>
         </CardHeader>
         <CardContent class="space-y-4">
           <p class="text-sm text-muted-foreground">
             You're about to submit your responses. This action cannot be undone.
           </p>
           <p class="text-sm text-muted-foreground">
-            Please review your answers before submitting.
+            {study?.join_flow_key === 'slp-2026'
+              ? 'Make sure you are satisfied with each recording before submitting.'
+              : 'Please review your answers before submitting.'}
           </p>
 
           {#if submitError}
