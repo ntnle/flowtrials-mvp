@@ -74,13 +74,6 @@ Proceeding anyway is a failure.
 
 ---
 
-## Permitted Tools
-
-**Allowed**
-- `view`: read files and directories
-- `create_file`: create new files
-- `str_replace`: edit existing files
-
 **Forbidden**
 - Any command execution (`pnpm`, `npm`, `git`, tests, linters, etc.)
 

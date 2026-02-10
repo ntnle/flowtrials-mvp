@@ -129,7 +129,7 @@
       }
       if (block.required && block.type === 'audio_recording') {
         const status = audioStatusByBlockId[block.id] || (responses[block.id] ? 'saved' : 'idle');
-        if (!responses[block.id]) return false;
+        if (!responses[block.id]?.path) return false;
         if (status === 'recording' || status === 'uploading') return false;
         continue;
       }
@@ -542,7 +542,7 @@
                     {#if block.required}<span class="text-destructive">*</span>{/if}
                   </span>
 
-                  {#if showValidationHint && block.required && (!responses[block.id] || (audioStatusByBlockId[block.id] || (responses[block.id] ? 'saved' : 'idle')) !== 'saved')}
+                  {#if showValidationHint && block.required && !responses[block.id]?.path}
                     <p class="text-xs text-destructive">This is required.</p>
                   {/if}
 

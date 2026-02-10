@@ -445,7 +445,7 @@
 							You’ll record ~30-second clips. You can re-record before submitting.
 						</p>
 						<a
-							href={`/study/${page.params.studyId}/tasks`}
+							href={study?.join_flow_key === 'koreng_phoneme' ? `/join/${page.params.studyId}/koreng/start` : `/study/${page.params.studyId}/tasks`}
 							class="w-full inline-flex items-center justify-center h-10 px-4 py-2 bg-primary text-primary-foreground rounded-md font-medium hover:opacity-90"
 						>
 							Start recording session
