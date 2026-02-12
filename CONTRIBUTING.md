@@ -67,6 +67,45 @@ Frontend env:
 - **Minimal abstractions**: add helpers only when there’s clear duplication and benefit.
 - **Security**: never bypass RLS assumptions; prefer adding/adjusting policies in migrations.
 
+### Auth / Supabase Client: Singleton-Only Rule
+We had a production break where auth failed across the app due to duplicate Supabase clients being instantiated.
+
+Non-negotiable rules:
+- All components/pages must import the shared client from `frontend-sv/src/lib/supabase.js`.
+- Never call `createClient()` outside `frontend-sv/src/lib/supabase.js`.
+- Auth state must come from the singleton stores in `frontend-sv/src/lib/authStore.js` (`user`, `session`, `loading`).
+- App-wide auth initialization happens once in `frontend-sv/src/routes/+layout.svelte` via `initAuth()`.
+
+Code review checklist (auth-related PRs):
+- No new `createClient()` usages.
+- No new per-page/per-component `supabase.auth.onAuthStateChange(...)` subscriptions.
+- New code reads auth via the shared stores, not via ad-hoc session caching.
+
+If you need a Supabase call in UI code:
+- Import functions from `frontend-sv/src/lib/supabase.js` (preferred), or import `supabase` from there.
+
+If you need auth state in UI code:
+- Import `user`, `session`, `loading` from `frontend-sv/src/lib/authStore.js`.
+
+Note: `$lib/supabase.js` contains browser-oriented helpers (some reference `window`). Avoid importing it from server-only contexts.
+
+## Tests (Stability While Shipping)
+The frontend includes a Playwright E2E suite intended as a lightweight stability gate while adding features.
+
+Location:
+- Tests: `frontend-sv/e2e/`
+- Config: `frontend-sv/playwright.config.js`
+
+How to run:
+- From `frontend-sv/`: `pnpm test:e2e`
+- Alias: `pnpm test`
+
+What it does:
+- Builds and serves the app (`npm run build` + `npm run preview` via Playwright `webServer`), then runs tests in `frontend-sv/e2e/`.
+
+Recommendation:
+- When touching auth, join, or tasks, add/extend an E2E test that covers the affected flow so regressions get caught early.
+
 ## Database & Migrations
 - All schema/RLS/storage changes should be done via SQL migrations in `supabase/migrations/`.
 - Keep migrations small and focused.

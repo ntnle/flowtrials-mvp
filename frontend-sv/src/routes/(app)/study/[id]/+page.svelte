@@ -3,7 +3,7 @@
   import { page } from '$app/stores';
   import { getStudyById, generateEligibilityQuiz, generateStudySummary, generatePlainTitle } from '$lib/api.js';
   import { createParticipationRequest, getStudyByIdSupabase, getPublicMediaUrl, getMyParticipationForStudy, acknowledgeConsent } from '$lib/supabase.js';
-  import { user } from '$lib/authStore';
+  import { user } from '$lib/authStore.js';
   import { Card, CardHeader, CardTitle, CardContent } from '$lib/components/ui/card/index.js';
 
   let studyId = null;

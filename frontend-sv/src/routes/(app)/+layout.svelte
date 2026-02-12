@@ -1,6 +1,6 @@
 <script>
 	import { goto } from '$app/navigation';
-	import { user } from '$lib/authStore.js';
+	import { user, loading as authLoading } from '$lib/authStore.js';
 	import { signOut } from '$lib/supabase.js';
 
 	let { children } = $props();
@@ -20,7 +20,9 @@
 			<a href="/browse" class="text-sm font-medium hover:text-primary transition-colors">Browse</a>
 			<a href="/bio" class="text-sm font-medium hover:text-primary transition-colors">Bio</a>
 
-			{#if $user}
+			{#if $authLoading}
+				<!-- Auth state still hydrating; avoid flashing incorrect actions -->
+			{:else if $user}
 				<a href="/profile" class="text-sm font-medium hover:text-primary transition-colors">Profile</a>
 				<button
 					onclick={handleSignOut}

@@ -4,14 +4,35 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'http://localhost:54321';
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
 
-// Create Supabase client
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: true
-  }
-});
+if (import.meta.env.DEV) {
+  // eslint-disable-next-line no-console
+  console.log('[supabase] init', {
+    url: supabaseUrl,
+    usingEnvUrl: Boolean(import.meta.env.VITE_SUPABASE_URL),
+    usingEnvAnonKey: Boolean(import.meta.env.VITE_SUPABASE_ANON_KEY)
+  });
+}
+
+const SUPABASE_SINGLETON_KEY = '__flowtrials_supabase__';
+
+function getSupabaseSingleton() {
+  const existing = globalThis[SUPABASE_SINGLETON_KEY];
+  if (existing) return existing;
+
+  const client = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: true
+    }
+  });
+
+  globalThis[SUPABASE_SINGLETON_KEY] = client;
+  return client;
+}
+
+// Create Supabase client (singleton to avoid multiple GoTrueClient instances)
+export const supabase = getSupabaseSingleton();
 
 /**
  * Auth helpers

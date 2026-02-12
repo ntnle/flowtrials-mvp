@@ -47,6 +47,10 @@ cp .env.example .env
 pnpm dev
 ```
 
+## Auth + Stability Notes
+- Auth relies on a strict singleton Supabase client + singleton auth store. See [ARCHITECTURE.md](ARCHITECTURE.md) and the "Auth / Supabase Client: Singleton-Only Rule" section in [CONTRIBUTING.md](CONTRIBUTING.md).
+- Core UI stability checks run via Playwright E2E tests: `cd frontend-sv && pnpm test`.
+
 ## Scripts
 
 Run scripts from the repo root:

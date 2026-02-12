@@ -44,6 +44,8 @@ If these documents are incomplete, ambiguous, or contradictory:
 - **No outcome substitution**  
   Achieving the “same user-visible result” via a different approach is **not acceptable**.
 
+- **Do not assume you are supposed to implement code**
+   When the user makes a query, assume they want you to 'talk' to them unless they tell you to do code 
 ---
 
 ## Plan Adherence (Critical Rule)

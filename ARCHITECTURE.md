@@ -13,6 +13,23 @@ Design constraint: **writes are Supabase-first** so RLS remains the source of tr
 - FastAPI is **read-only for the frontend**: search, AI generation (cache-backed), and published reads.
 - Svelte routes are **monolithic**: keep state + handlers + UI in a single `+page.svelte` per route.
 
+## Frontend Auth + Supabase Singleton (Critical)
+Auth stability depends on there being exactly one Supabase client instance in the browser.
+
+Source of truth:
+- Supabase client singleton: `frontend-sv/src/lib/supabase.js` exports `supabase`
+- Auth state singleton: `frontend-sv/src/lib/authStore.js` exports `initAuth`, `user`, `session`, `loading`
+- Auth initialization: `frontend-sv/src/routes/+layout.svelte` calls `initAuth()` once on mount
+
+Rules:
+- **Do not call** `createClient()` anywhere except `frontend-sv/src/lib/supabase.js`.
+- **Do not** create new ad-hoc auth subscriptions in components/pages; use the shared stores from `frontend-sv/src/lib/authStore.js`.
+- Treat `$lib/supabase.js` as a browser-only module (it contains helpers that reference `window`). Don’t import it from server-only contexts.
+
+Why this is strict:
+- Multiple clients (or multiple GoTrue auth instances) can register duplicate listeners and race to hydrate session state.
+- Symptoms include “auth broken throughout the app”, session flicker, or the wrong session overwriting the latest one.
+
 ## Routing & Layouts
 The frontend uses SvelteKit route groups to support a navbar-free focused experience while preserving URLs:
 - Root shell: `frontend-sv/src/routes/+layout.svelte` runs global concerns (notably auth initialization) and renders children.

@@ -13,7 +13,7 @@
 		getTaskMediaUrl
 	} from '$lib/supabase.js';
 	import { getStudyById } from '$lib/api.js';
-	import { user, loading as authLoading } from '$lib/authStore';
+	import { user, loading as authLoading } from '$lib/authStore.js';
 	import { Card, CardHeader, CardTitle, CardContent } from '$lib/components/ui/card/index.js';
 
 	// Route params

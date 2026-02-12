@@ -4,7 +4,7 @@
   import { page } from '$app/stores';
   import { getStudyByIdSupabase, getMyParticipationForStudy, getMyTaskSubmissions, submitTaskResponse, uploadAudioRecording, deleteAudioRecording, getTaskMediaUrl } from '$lib/supabase.js';
   import { getStudyById } from '$lib/api.js';
-  import { user } from '$lib/authStore';
+  import { user, loading as authLoading } from '$lib/authStore.js';
   import { Card, CardHeader, CardTitle, CardContent } from '$lib/components/ui/card/index.js';
 
   let studyId = null;
@@ -65,7 +65,16 @@
     loading = true;
     error = null;
 
-    // Must be logged in
+    // Must be logged in (but don't redirect until auth initialization completes)
+    if ($authLoading) {
+      const unsubscribe = authLoading.subscribe((isLoading) => {
+        if (isLoading) return;
+        unsubscribe();
+        loadData(studyId, taskId);
+      });
+      return;
+    }
+
     if (!$user) {
       goto(`/login?redirect=${encodeURIComponent($page.url.pathname)}`);
       return;

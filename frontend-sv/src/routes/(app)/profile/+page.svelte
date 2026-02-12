@@ -4,7 +4,7 @@
   import { page } from '$app/stores';
   import { Input } from "$lib/components/ui/input/index.js";
   import { Card, CardHeader, CardTitle, CardContent } from "$lib/components/ui/card/index.js";
-  import { user } from '$lib/authStore';
+  import { user, loading as authLoading } from '$lib/authStore.js';
   import {
     getUserProfile,
     updateUserProfile,
@@ -25,7 +25,7 @@
     getAudioRecordingUrl,
     uploadTaskMedia,
     deleteTaskMedia
-  } from '$lib/supabase';
+  } from '$lib/supabase.js';
 
   let activeTab = 'requests'; // 'requests', 'studies', or 'info'
   let loading = true;
@@ -105,6 +105,20 @@
   let editingPageIndex = null;
 
   onMount(async () => {
+    // Avoid redirecting before auth initialization completes.
+    if ($authLoading) {
+      const unsubscribe = authLoading.subscribe((isLoading) => {
+        if (isLoading) return;
+        unsubscribe();
+        if (!$user) {
+          goto('/login');
+          return;
+        }
+        loadData();
+      });
+      return;
+    }
+
     if (!$user) {
       goto('/login');
       return;
